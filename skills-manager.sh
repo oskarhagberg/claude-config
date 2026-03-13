@@ -158,7 +158,67 @@ cmd_enable() {
   echo "Enabled '${name}'."
 }
 
-cmd_help() {
+cmd_share() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "Usage: skills share <n>"
+
+  require_claude_dir
+  require_git
+  require_team_remote
+
+  [[ -d "${SKILLS_DIR}/${name}" ]] || die "'${name}' not found in skills/"
+  [[ -f "${SKILLS_DIR}/${name}/SKILL.md" ]] || die "'${name}/SKILL.md' not found"
+
+  local branch="skill/${name}"
+  local current_branch
+  current_branch=$(git -C "$CLAUDE_DIR" rev-parse --abbrev-ref HEAD)
+
+  echo "Fetching from team remote..."
+  git -C "$CLAUDE_DIR" fetch "$TEAM_REMOTE" --quiet
+
+  # Check if skill already exists on team remote
+  if git -C "$CLAUDE_DIR" ls-tree --name-only "${TEAM_REMOTE}/${TEAM_BRANCH}" "skills/${name}/" \
+      &>/dev/null; then
+    die "'${name}' already exists on ${TEAM_REMOTE}/${TEAM_BRANCH}"
+  fi
+
+  # Create a branch off team/main, commit only the skill, push
+  echo "Creating branch '${branch}' from ${TEAM_REMOTE}/${TEAM_BRANCH}..."
+  git -C "$CLAUDE_DIR" checkout -b "$branch" "${TEAM_REMOTE}/${TEAM_BRANCH}"
+
+  cp -r "${SKILLS_DIR}/${name}" "${CLAUDE_DIR}/skills/${name}"
+  git -C "$CLAUDE_DIR" add "skills/${name}/"
+  git -C "$CLAUDE_DIR" commit -m "chore: add skill ${name}"
+
+  echo "Pushing branch to team remote..."
+  git -C "$CLAUDE_DIR" push "$TEAM_REMOTE" "$branch"
+
+  # Return to previous branch
+  git -C "$CLAUDE_DIR" checkout "$current_branch"
+
+  # Open PR if gh is available
+  if command -v gh &>/dev/null; then
+    local team_repo
+    team_repo=$(git -C "$CLAUDE_DIR" remote get-url "$TEAM_REMOTE" \
+      | sed 's/.*github.com[:/]//' | sed 's/\.git$//')
+    echo ""
+    echo "Opening PR on ${team_repo}..."
+    gh pr create \
+      --repo "$team_repo" \
+      --head "$branch" \
+      --base "$TEAM_BRANCH" \
+      --title "Add skill: ${name}" \
+      --body "Sharing the \`${name}\` skill from personal config."
+  else
+    echo ""
+    echo "Push complete. Open a PR on the team repo to get it merged:"
+    local team_url
+    team_url=$(git -C "$CLAUDE_DIR" remote get-url "$TEAM_REMOTE" | sed 's/\.git$//')
+    echo "  ${team_url}/compare/${branch}"
+  fi
+}
+
+
   echo "Usage: skills <command>"
   echo ""
   echo "Commands:"
@@ -177,6 +237,7 @@ case "${1:-}" in
   list-disabled)  cmd_list_disabled ;;
   list-team)      cmd_list_team ;;
   add)            cmd_add "${2:-}" ;;
+  share)          cmd_share "${2:-}" ;;
   disable)        cmd_disable "${2:-}" ;;
   enable)         cmd_enable "${2:-}" ;;
   help|--help|-h) cmd_help ;;
