@@ -5,6 +5,7 @@
 #   skills list-disabled     List all disabled skills
 #   skills list-team         List skills available from the team remote
 #   skills add <name>        Pull a skill from the team remote
+#   skills share <name>      Propose a personal skill to the team remote (opens PR)
 #   skills disable <name>    Move a skill to skills-disabled/
 #   skills enable <name>     Move a skill back from skills-disabled/
 
@@ -37,7 +38,6 @@ require_team_remote() {
 }
 
 skill_name() {
-  # Extract name from SKILL.md frontmatter, fall back to directory name
   local skill_dir="$1"
   local frontmatter_name
   frontmatter_name=$(grep -m1 '^name:' "${skill_dir}/SKILL.md" 2>/dev/null \
@@ -82,7 +82,7 @@ cmd_list_team() {
   echo ""
   echo "Team skills (${TEAM_REMOTE}/${TEAM_BRANCH}):"
 
-  local team_skills already_have
+  local team_skills
   team_skills=$(git -C "$CLAUDE_DIR" ls-tree --name-only "${TEAM_REMOTE}/${TEAM_BRANCH}" skills/ \
     2>/dev/null | sed 's|skills/||')
 
@@ -124,6 +124,62 @@ cmd_add() {
   echo "Done. '${name}' is now active."
 }
 
+cmd_share() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "Usage: skills share <name>"
+
+  require_claude_dir
+  require_git
+  require_team_remote
+
+  [[ -d "${SKILLS_DIR}/${name}" ]] || die "'${name}' not found in skills/"
+  [[ -f "${SKILLS_DIR}/${name}/SKILL.md" ]] || die "'${name}/SKILL.md' not found"
+
+  local branch="skill/${name}"
+  local current_branch
+  current_branch=$(git -C "$CLAUDE_DIR" rev-parse --abbrev-ref HEAD)
+
+  echo "Fetching from team remote..."
+  git -C "$CLAUDE_DIR" fetch "$TEAM_REMOTE" --quiet
+
+  if git -C "$CLAUDE_DIR" ls-tree --name-only "${TEAM_REMOTE}/${TEAM_BRANCH}" "skills/${name}/" \
+      &>/dev/null; then
+    die "'${name}' already exists on ${TEAM_REMOTE}/${TEAM_BRANCH}"
+  fi
+
+  echo "Creating branch '${branch}' from ${TEAM_REMOTE}/${TEAM_BRANCH}..."
+  git -C "$CLAUDE_DIR" checkout -b "$branch" "${TEAM_REMOTE}/${TEAM_BRANCH}"
+
+  cp -r "${SKILLS_DIR}/${name}" "${CLAUDE_DIR}/skills/${name}"
+  git -C "$CLAUDE_DIR" add "skills/${name}/"
+  git -C "$CLAUDE_DIR" commit -m "chore: add skill ${name}"
+
+  echo "Pushing branch to team remote..."
+  git -C "$CLAUDE_DIR" push "$TEAM_REMOTE" "$branch"
+
+  git -C "$CLAUDE_DIR" checkout "$current_branch"
+
+  if command -v gh &>/dev/null; then
+    local team_repo
+    team_repo=$(git -C "$CLAUDE_DIR" remote get-url "$TEAM_REMOTE" \
+      | sed 's/.*github.com[:/]//' | sed 's/\.git$//')
+    echo ""
+    echo "Opening PR on ${team_repo}..."
+    gh pr create \
+      --repo "$team_repo" \
+      --head "$branch" \
+      --base "$TEAM_BRANCH" \
+      --title "Add skill: ${name}" \
+      --body "Sharing the \`${name}\` skill from personal config."
+  else
+    echo ""
+    echo "Push complete. Open a PR on the team repo to get it merged:"
+    local team_url
+    team_url=$(git -C "$CLAUDE_DIR" remote get-url "$TEAM_REMOTE" | sed 's/\.git$//')
+    echo "  ${team_url}/compare/${branch}"
+  fi
+}
+
 cmd_disable() {
   local name="${1:-}"
   [[ -n "$name" ]] || die "Usage: skills disable <name>"
@@ -158,67 +214,7 @@ cmd_enable() {
   echo "Enabled '${name}'."
 }
 
-cmd_share() {
-  local name="${1:-}"
-  [[ -n "$name" ]] || die "Usage: skills share <n>"
-
-  require_claude_dir
-  require_git
-  require_team_remote
-
-  [[ -d "${SKILLS_DIR}/${name}" ]] || die "'${name}' not found in skills/"
-  [[ -f "${SKILLS_DIR}/${name}/SKILL.md" ]] || die "'${name}/SKILL.md' not found"
-
-  local branch="skill/${name}"
-  local current_branch
-  current_branch=$(git -C "$CLAUDE_DIR" rev-parse --abbrev-ref HEAD)
-
-  echo "Fetching from team remote..."
-  git -C "$CLAUDE_DIR" fetch "$TEAM_REMOTE" --quiet
-
-  # Check if skill already exists on team remote
-  if git -C "$CLAUDE_DIR" ls-tree --name-only "${TEAM_REMOTE}/${TEAM_BRANCH}" "skills/${name}/" \
-      &>/dev/null; then
-    die "'${name}' already exists on ${TEAM_REMOTE}/${TEAM_BRANCH}"
-  fi
-
-  # Create a branch off team/main, commit only the skill, push
-  echo "Creating branch '${branch}' from ${TEAM_REMOTE}/${TEAM_BRANCH}..."
-  git -C "$CLAUDE_DIR" checkout -b "$branch" "${TEAM_REMOTE}/${TEAM_BRANCH}"
-
-  cp -r "${SKILLS_DIR}/${name}" "${CLAUDE_DIR}/skills/${name}"
-  git -C "$CLAUDE_DIR" add "skills/${name}/"
-  git -C "$CLAUDE_DIR" commit -m "chore: add skill ${name}"
-
-  echo "Pushing branch to team remote..."
-  git -C "$CLAUDE_DIR" push "$TEAM_REMOTE" "$branch"
-
-  # Return to previous branch
-  git -C "$CLAUDE_DIR" checkout "$current_branch"
-
-  # Open PR if gh is available
-  if command -v gh &>/dev/null; then
-    local team_repo
-    team_repo=$(git -C "$CLAUDE_DIR" remote get-url "$TEAM_REMOTE" \
-      | sed 's/.*github.com[:/]//' | sed 's/\.git$//')
-    echo ""
-    echo "Opening PR on ${team_repo}..."
-    gh pr create \
-      --repo "$team_repo" \
-      --head "$branch" \
-      --base "$TEAM_BRANCH" \
-      --title "Add skill: ${name}" \
-      --body "Sharing the \`${name}\` skill from personal config."
-  else
-    echo ""
-    echo "Push complete. Open a PR on the team repo to get it merged:"
-    local team_url
-    team_url=$(git -C "$CLAUDE_DIR" remote get-url "$TEAM_REMOTE" | sed 's/\.git$//')
-    echo "  ${team_url}/compare/${branch}"
-  fi
-}
-
-
+cmd_help() {
   echo "Usage: skills <command>"
   echo ""
   echo "Commands:"
@@ -226,6 +222,7 @@ cmd_share() {
   echo "  list-disabled     List disabled skills"
   echo "  list-team         List skills available from the team remote"
   echo "  add <name>        Pull a skill from the team remote"
+  echo "  share <name>      Propose a personal skill to the team remote (opens PR)"
   echo "  disable <name>    Move a skill to skills-disabled/"
   echo "  enable <name>     Move a skill back from skills-disabled/"
 }
