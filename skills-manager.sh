@@ -113,8 +113,9 @@ cmd_add() {
   echo "Fetching from team remote..."
   git -C "$CLAUDE_DIR" fetch "$TEAM_REMOTE" --quiet
 
-  git -C "$CLAUDE_DIR" ls-tree --name-only "${TEAM_REMOTE}/${TEAM_BRANCH}" "skills/${name}/" \
-    &>/dev/null || die "'${name}' not found on ${TEAM_REMOTE}/${TEAM_BRANCH}"
+  local team_tree
+  team_tree=$(git -C "$CLAUDE_DIR" ls-tree --name-only "${TEAM_REMOTE}/${TEAM_BRANCH}" "skills/${name}/" 2>/dev/null)
+  [[ -n "$team_tree" ]] || die "'${name}' not found on ${TEAM_REMOTE}/${TEAM_BRANCH}"
 
   echo "Adding skill '${name}'..."
   git -C "$CLAUDE_DIR" checkout "${TEAM_REMOTE}/${TEAM_BRANCH}" -- "skills/${name}/"
@@ -142,15 +143,21 @@ cmd_share() {
   echo "Fetching from team remote..."
   git -C "$CLAUDE_DIR" fetch "$TEAM_REMOTE" --quiet
 
-  if git -C "$CLAUDE_DIR" ls-tree --name-only "${TEAM_REMOTE}/${TEAM_BRANCH}" "skills/${name}/" \
-      &>/dev/null; then
+  local team_tree
+  team_tree=$(git -C "$CLAUDE_DIR" ls-tree --name-only "${TEAM_REMOTE}/${TEAM_BRANCH}" "skills/${name}/" 2>/dev/null)
+  if [[ -n "$team_tree" ]]; then
     die "'${name}' already exists on ${TEAM_REMOTE}/${TEAM_BRANCH}"
   fi
+
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+  cp -r "${SKILLS_DIR}/${name}" "${tmp_dir}/${name}"
 
   echo "Creating branch '${branch}' from ${TEAM_REMOTE}/${TEAM_BRANCH}..."
   git -C "$CLAUDE_DIR" checkout -b "$branch" "${TEAM_REMOTE}/${TEAM_BRANCH}"
 
-  cp -r "${SKILLS_DIR}/${name}" "${CLAUDE_DIR}/skills/${name}"
+  cp -r "${tmp_dir}/${name}" "${SKILLS_DIR}/${name}"
+  rm -rf "$tmp_dir"
   git -C "$CLAUDE_DIR" add "skills/${name}/"
   git -C "$CLAUDE_DIR" commit -m "chore: add skill ${name}"
 
