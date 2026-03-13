@@ -1,0 +1,31 @@
+# Session & conversation history (can grow to 1.5 GB+)
+projects/
+history.jsonl
+backups/
+
+# plugins
+plugins/
+
+# Runtime / cache
+statsig/
+local/
+cache/
+paste-cache/
+stats-cache.json
+
+# Per-session state (ephemeral)
+shell-snapshots/
+session-env/
+plans/
+tasks/
+todos/
+
+# Debug & telemetry
+debug/
+telemetry/
+
+# File edit snapshots
+file-history/
+
+# Personal secrets — never commit
+settings.local.json
