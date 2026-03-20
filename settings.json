@@ -7,6 +7,13 @@
     "allow": [
       "Bash(echo:*)",
       "Bash(find:*)",
+      "Bash(git blame:*)",
+      "Bash(git branch:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git stash list:*)",
+      "Bash(git status:*)",
       "Bash(grep:*)",
       "Bash(ls:*)",
       "Bash(pnpm ls:*)",
