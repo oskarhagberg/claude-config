@@ -32,8 +32,10 @@ git clone git@github.com:oskarhagberg/claude-config.git ~/.claude   # or: git pu
 
 `install.sh` is interactive and idempotent — re-run it after every pull. It:
 
-- checks `cmux`, `gh`, `jq`, `python3`, `git` (required) and `linear`, `wt`
-  (optional), and **offers to `brew install worktrunk`** when `wt` is missing;
+- checks `cmux`, `gh`, `jq`, `python3`, `git` (required) and `linear` (optional),
+  **offers to `brew install schpet/tap/linear`** when it is missing, and reports
+  whether it is logged in — installed-but-unauthenticated is a silent failure,
+  since `linear issue view` then returns nothing and names quietly degrade;
 - asks for your repos, ticket prefixes, Linear workspace and agent preferences,
   then writes `config.local.sh` (backing up any existing one);
 - symlinks `~/.local/bin/cmux-agent`, and `cmux-autopilot` too when
@@ -67,8 +69,7 @@ Restart running Claude sessions afterwards so the hooks load.
 | `cmux` | everything | the app. **Its CLI is on PATH only inside terminals cmux spawns** — a plain login shell has none, and there is no symlink in `/usr/local/bin`. The scripts resolve `/Applications/cmux.app/Contents/Resources/bin/cmux` directly, so they do not care; add that directory to your PATH to run `cmux` by hand. |
 | `gh` (authenticated) | finding the PR for a branch | `brew install gh && gh auth login` |
 | `jq`, `python3`, `git` | everywhere | preinstalled or `brew` |
-| `linear` | *optional* — names workspaces from the issue title instead of the prompt text | `brew install schpet/tap/linear && linear auth login`. Plain `brew install linear` is the Linear **desktop app**, not this. |
-| `worktrunk` (`wt`) | *optional* — `AGENT_WORKTREE=1` | `brew install worktrunk` (install.sh offers it) |
+| `linear` | *optional* — names workspaces from the issue title instead of the prompt text: `cmux-agent ALI-42` becomes `ALI-42 web docker file` rather than the bare ticket | `brew install schpet/tap/linear && linear auth login` (install.sh offers it). Plain `brew install linear` is the Linear **desktop app**, not this. Check with `linear auth whoami`. |
 
 ---
 
@@ -115,7 +116,7 @@ skills.
 | `NAMING_SKILLS` | Skills whose invocation renames the workspace (regex). | no skill ever triggers naming |
 | `NAMING_ON_TICKET` | `1` = a prompt merely mentioning a ticket also renames. | — |
 | `SLUG_MODEL` | Model that compresses an issue title to ~3 words. | — |
-| `AGENT_WORKTREE` | `1` = `wt switch --create <slug>` per agent. | — |
+| `AGENT_WORKTREE` | `1` = `claude --worktree <slug>` per agent → `<repo>/.claude/worktrees/<slug>`, branch `worktree-<slug>`, locked to the pid. | — |
 | `AGENT_MODEL` / `AGENT_EFFORT` | Passed to `claude`. | claude's own defaults |
 | `AGENT_REMOTE_CONTROL` | `1` = `--remote-control <slug>`. | — |
 | `AGENT_OPEN_ISSUE` | `1` = open the ticket in a browser split at launch. | — |
@@ -135,7 +136,7 @@ TICKET_RE='(VIN|CORP)'                    TICKET_RE='(ABC)'
 LINEAR_WORKSPACE="humly"                  LINEAR_WORKSPACE="humly"
 NAMING_SKILLS='(cr-autopilot|write-cr…)'  NAMING_SKILLS=''      # no such skills
 AUTOPILOT_SKILL="cr-autopilot"            AUTOPILOT_SKILL=''    # no such skill
-AGENT_WORKTREE=1                          AGENT_WORKTREE=0      # no worktrunk
+AGENT_WORKTREE=1                          AGENT_WORKTREE=0      # no worktrees
 ```
 
 That is the whole diff between machines.
@@ -166,6 +167,40 @@ trio with one code path. The name is derived **synchronously** (~15s: a `linear 
 view` plus a haiku call) rather than refined in the background, because it also
 becomes the worktree and therefore the branch that carries the PR — a stub
 branch name is not worth the saved seconds.
+
+### Two preconditions, checked before the workspace opens
+
+Both of these used to fail *inside* the new workspace, where the shell exited
+immediately afterwards and took the error off the screen with it — a launch that
+failed looked exactly like a workspace that flickered and vanished.
+
+- **Trust.** `claude` refuses to start in a directory whose "do you trust this
+  folder?" dialog has not been accepted, and exits 1. `cmux-agent` checks
+  `~/.claude.json` first and tells you which directory needs it; `install.sh`
+  and `--doctor` check every `MANAGED_REPOS` entry. Nothing accepts it for you.
+- **worktrunk.** No longer a dependency at all — see below.
+
+And when the session itself exits non-zero, the workspace **stays open** with
+`[cmux-agent] exited <rc>` under the error. It closes on a clean exit only.
+
+### One worktree, owned by claude
+
+`AGENT_WORKTREE=1` passes `--worktree <slug>` to claude, which creates
+`<repo>/.claude/worktrees/<slug>` on branch `worktree-<slug>` and locks it to the
+session's pid for as long as that session runs.
+
+**Worktrunk is deliberately not used here**, though it was at first. `wt switch
+--create <slug>` puts its worktree in a *sibling* directory, `<repo>.<slug>` —
+which is outside `MANAGED_REPOS`, so `in_managed_repo()` says no and
+`hook-name-workspace.sh` switches itself off for the whole session. Running both
+tools (the original code did) produced two worktrees and two branches per launch
+with worktrunk's left orphaned. Under `.claude/worktrees` the worktree stays
+inside the repo and everything keyed to `MANAGED_REPOS` keeps working.
+
+The cost is the branch name: claude prefixes it `worktree-` and that is not
+configurable, so `ticket_from_branch()` strips a leading `worktree-` before
+matching `TICKET_RE`. Without that the anchor never matches inside an agent
+worktree and every pill there degrades to a bare `PR #123`.
 
 ---
 
@@ -222,6 +257,25 @@ release cannot leak into the export by accident.
 **Import needs cmux quit.** It keeps preferences in memory and flushes them on
 exit, which would overwrite anything written underneath it. The script refuses
 to run while cmux is up.
+
+**`pgrep` cannot see cmux, and that guard was a no-op until 2026-09-12.** macOS
+records a bundled app's accounting name as its executable *path* truncated to 16
+characters — `ps -o comm` prints `/Applications/cm`, not `cmux` — so `pgrep cmux`
+matches nothing while cmux is running, with or without `-f`. The refusal above
+therefore never fired: `import` wrote all 37 keys underneath a live cmux, printed
+`imported 37 settings`, and cmux flushed its in-memory copy over every one of
+them on quit. A clean install looked successful and changed nothing.
+
+The check now matches the bundle path in full `ps` output, and short-circuits on
+`CMUX_PANEL_ID` when the script is itself running inside a cmux terminal — which
+it usually is, since cmux's CLI is only on PATH there. It is deliberately *not*
+`ps … | grep -q`: this file runs under `set -o pipefail`, and `grep -q` exits at
+the first match, SIGPIPEs `ps`, and fails the pipeline on success.
+
+Adjacent to this, `install.sh`'s "already in sync" test read
+`^0 unchanged\|, 0 differing, 0 not set` — whose first alternative matches the
+exact opposite case, a machine where *zero* keys agree. A fresh laptop could be
+told its settings already matched and never be offered the import at all.
 
 ---
 
@@ -321,7 +375,8 @@ until that is answered.
 | Pill shows `PR #123` with no ticket | `TICKET_RE` does not match your branch prefix. |
 | Pill links to GitHub, not Linear | `PR_LINK_TARGET=github`, or the repo is not in a Linear workspace with the GitHub integration. |
 | Workspace not renamed | It already has a `<TICKET> <text>` title (deliberate), or the dedupe marker is set for that prompt, or `cwd` is outside `MANAGED_REPOS`. |
-| cmux settings did not import | cmux was running. Quit it and re-run `cmux-settings.sh import`. |
+| cmux settings did not import | cmux was running. Quit it and re-run `cmux-settings.sh import`. Until 2026-09-12 the guard that detects this was broken (see below) and the import reported success while landing nothing. |
+| `cmux-agent` workspace appears then vanishes | The launch failed and the old unconditional `; exit` closed the pane over the error. Fixed: failures keep the workspace. The usual underlying cause is an untrusted directory — `install.sh --doctor` names it. |
 | Statusline shows `Usage: ~` | Nothing is writing `.statusline-usage-cache`, or the script's swift fallback is gone or has no `fetch-claude-usage.swift` to call. All of it belongs to **Claude Usage.app**. See below. |
 | Statusline has no colours | `COLOR_MODE=monochrome` in `statusline-config.txt`. Change it in the app's "Statusline Colors" panel, not by editing the file — the app overwrites it. |
 | Statusline is blank | `statusLine.command` points at a path that does not exist on this machine. `install.sh` repoints it; `--doctor` reports it. |

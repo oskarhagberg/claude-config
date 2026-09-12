@@ -100,26 +100,31 @@ fi
 if gh auth status >/dev/null 2>&1; then ok "gh is authenticated"
 else warn "gh is not authenticated — PR lookups will find nothing. Run: gh auth login"; fi
 
-if command -v linear >/dev/null 2>&1; then ok "linear (optional: better slugs from issue titles)"
+# linear is optional, but it is the difference between a workspace called
+# "ALI-42" and one called "ALI-42 export path logic": derive-name.sh only looks
+# up an issue title when this CLI is on PATH. The tap matters — plain
+# `brew install linear` is the Linear desktop app, an entirely different thing.
+LINEAR_FORMULA="schpet/tap/linear"
+if command -v linear >/dev/null 2>&1; then
+  ok "linear (optional: names workspaces from the issue title)"
 else
-  warn "linear not found (optional) — workspace names fall back to the prompt text"
-  warn "  install with: brew install schpet/tap/linear   (then: linear auth login)"
-  warn "  note: plain \`brew install linear\` is a different thing — the Linear desktop app"
-fi
-
-# worktrunk provides `wt`, used only when AGENT_WORKTREE=1.
-WT_OK=0
-if [ -x /opt/homebrew/bin/wt ] || [ -x /usr/local/bin/wt ] || command -v wt >/dev/null 2>&1; then
-  WT_OK=1; ok "wt / worktrunk (optional: one git worktree per agent)"
-else
-  warn "worktrunk not found (optional) — needed only for AGENT_WORKTREE=1"
+  warn "linear not found (optional) — names fall back to your prompt text, so"
+  warn "  \`cmux-agent ALI-42\` with no prose becomes the bare ticket \"ALI-42\""
+  warn "  note: plain \`brew install linear\` is a different thing — the desktop app"
   if [ "$MODE" = "interactive" ] && command -v brew >/dev/null 2>&1; then
-    if confirm "    Install it now with \`brew install worktrunk\`?" n; then
-      brew install worktrunk && WT_OK=1 && ok "worktrunk installed"
+    if confirm "    Install it now with \`brew install $LINEAR_FORMULA\`?" n; then
+      brew install "$LINEAR_FORMULA" && ok "linear installed"
     fi
   elif ! command -v brew >/dev/null 2>&1; then
     warn "  (no Homebrew here, so it cannot be offered automatically)"
   fi
+fi
+
+# Installed but not logged in is the quiet failure mode: `linear issue view`
+# returns nothing, derive-name.sh degrades to the ticket, and nothing says why.
+if command -v linear >/dev/null 2>&1; then
+  if timeout 15 linear auth whoami >/dev/null 2>&1; then ok "linear is authenticated"
+  else warn "linear is not authenticated — run: linear auth login"; fi
 fi
 
 [ "$MISSING" = "0" ] || { echo; bad "Install the required tools above, then re-run."; exit 1; }
@@ -144,12 +149,12 @@ fi
 if [ "$WRITE_CONFIG" = "1" ] && [ "$MODE" != "doctor" ]; then
   # Seed the prompts from whatever is already configured.
   D_REPOS=""; D_TICKET=""; D_LINEAR=""; D_TARGET="linear"
-  D_SKILLS=""; D_WT="$WT_OK"; D_MODEL=""; D_EFFORT=""
+  D_SKILLS=""; D_WT=1; D_MODEL=""; D_EFFORT=""
   # shellcheck disable=SC1090
   [ -f "$LOCAL" ] && . "$LOCAL" 2>/dev/null && {
     D_REPOS="${MANAGED_REPOS:-}"; D_TICKET="${TICKET_RE:-}"
     D_LINEAR="${LINEAR_WORKSPACE:-}"; D_TARGET="${PR_LINK_TARGET:-linear}"
-    D_SKILLS="${NAMING_SKILLS:-}"; D_WT="${AGENT_WORKTREE:-$WT_OK}"
+    D_SKILLS="${NAMING_SKILLS:-}"; D_WT="${AGENT_WORKTREE:-1}"
     D_MODEL="${AGENT_MODEL:-}"; D_EFFORT="${AGENT_EFFORT:-}"
   }
   [ -n "$D_REPOS" ] || D_REPOS="$PWD"
@@ -189,13 +194,10 @@ INTRO
   R_SKILLS=$(ask "  Naming skills regex" "$D_SKILLS")
 
   echo >&2
+  echo "  Give each agent its own git worktree? claude creates it at" >&2
+  echo "  <repo>/.claude/worktrees/<slug> and locks it to the session." >&2
   R_WT=0
-  if [ "$WT_OK" = "1" ]; then
-    confirm "  Give each agent its own git worktree (wt switch --create)?" \
-      "$([ "$D_WT" = "1" ] && echo y || echo n)" && R_WT=1
-  else
-    echo "  Worktrees disabled (worktrunk is not installed)." >&2
-  fi
+  confirm "  Per-agent worktree" "$([ "$D_WT" = "1" ] && echo y || echo n)" && R_WT=1
 
   echo >&2
   echo "  Skill for the \`cmux-autopilot <TICKET>\` shortcut, e.g. cr-autopilot." >&2
@@ -302,6 +304,33 @@ else
   warn "  the old fetch-claude-usage.swift fallback was dropped (it embedded a token)"
 fi
 
+# ── 3c. workspace trust ─────────────────────────────────────────────────────
+# A repo Claude Code has never been trusted in kills `cmux-agent` on its first
+# run — claude exits 1 before doing anything. Nothing here can accept the dialog
+# on your behalf, so say which repos need one, while there is still a terminal
+# to read it in.
+hdr "Claude Code workspace trust"
+# shellcheck disable=SC1091
+. "$CMUX_DIR/config.sh"   # pick up a config.local.sh written earlier in this run
+if [ -z "${MANAGED_REPOS:-}" ]; then
+  warn "MANAGED_REPOS is empty — nothing to check"
+else
+  untrusted=0
+  while IFS= read -r repo; do
+    [ -n "$repo" ] || continue
+    if [ ! -d "$repo" ]; then
+      warn "$repo does not exist on this machine"
+    elif trust_accepted "$repo"; then
+      ok "trusted: $repo"
+    else
+      bad "not trusted: $repo"
+      untrusted=$((untrusted+1))
+    fi
+  done <<< "$MANAGED_REPOS"
+  [ "$untrusted" -gt 0 ] && \
+    warn "run \`claude\` once in each and accept the trust dialog, or cmux-agent will exit 1 there"
+fi
+
 [ "$MODE" = "doctor" ] && { hdr "Doctor only — nothing changed."; exit 0; }
 
 # ── 3. executables + symlink ────────────────────────────────────────────────
@@ -360,7 +389,12 @@ PY
 # ── 5. cmux GUI settings ────────────────────────────────────────────────────
 hdr "cmux GUI settings"
 if [ -f "$CMUX_DIR/cmux-settings.json" ]; then
-  if "$CMUX_DIR/cmux-settings.sh" diff 2>/dev/null | tail -1 | grep -q '^0 unchanged\|, 0 differing, 0 not set'; then
+  # The summary line is "<n> unchanged, <n> differing, <n> not set here", and
+  # only all-zero on the last two means there is nothing to do. An earlier
+  # `^0 unchanged` alternative here matched the exact opposite case — zero keys
+  # agreeing — and reported a machine that shared no settings at all as already
+  # in sync.
+  if "$CMUX_DIR/cmux-settings.sh" diff 2>/dev/null | tail -1 | grep -q ', 0 differing, 0 not set'; then
     ok "cmux settings already match cmux-settings.json"
   else
     "$CMUX_DIR/cmux-settings.sh" diff 2>/dev/null | sed 's/^/  /'

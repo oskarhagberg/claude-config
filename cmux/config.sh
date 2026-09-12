@@ -116,9 +116,15 @@ find_ticket() {
 }
 
 # Ticket at the START of a branch name: "vin-1760-financial-baseline" -> "VIN-1760".
+#
+# A leading "worktree-" is stripped first, because `claude --worktree <slug>`
+# names its branch worktree-<slug> and the prefix is not configurable. Without
+# this the anchor never matches inside an agent worktree and every pill in one
+# degrades to a bare "PR #123" instead of "VIN-1760 · PR #2302".
 ticket_from_branch() {
   [ -n "$TICKET_RE" ] || return 0
-  printf '%s' "${1:-}" | grep -oiE "^$TICKET_RE-[0-9]+" | head -1 \
+  printf '%s' "${1:-}" | sed -E 's/^worktree-//' \
+    | grep -oiE "^$TICKET_RE-[0-9]+" | head -1 \
     | tr '[:lower:]' '[:upper:]'
 }
 
@@ -171,6 +177,40 @@ linear_issue_url() {
   t=$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')
   [ -n "$t" ] || return 0
   printf 'https://linear.app/%s/issue/%s' "$LINEAR_WORKSPACE" "$t"
+}
+
+# ── claude workspace trust ──────────────────────────────────────────────────
+
+# True when Claude Code considers $1 a trusted directory.
+#
+# WHY THIS EXISTS. `claude` refuses to start — and `--worktree` refuses to create
+# anything — in a directory whose trust dialog has not been accepted, exiting 1
+# with "Workspace trust not yet accepted". On a freshly cloned machine that is
+# every repo, so the very first `cmux-agent` run dies on it. Checking here turns
+# a launch that vanishes into a sentence telling you what to do.
+#
+# ~/.claude.json records the answer per project path. The nearest recorded
+# ancestor decides, which is why a new worktree under a trusted repo needs no
+# fresh dialog, and why an explicit `false` on a child still overrides a trusted
+# parent. Absent python3 or the file, say "not trusted" and let the caller warn.
+trust_accepted() {
+  local dir="${1:-}"
+  [ -n "$dir" ] || return 1
+  python3 - "$dir" <<'PY' 2>/dev/null
+import json, os, sys
+d = os.path.realpath(sys.argv[1])
+try:
+    projects = json.load(open(os.path.expanduser("~/.claude.json"))).get("projects", {})
+except Exception:
+    sys.exit(1)
+best = None
+for path, cfg in projects.items():
+    p = os.path.realpath(path)
+    if d == p or d.startswith(p.rstrip("/") + "/"):
+        if best is None or len(p) > len(best[0]):
+            best = (p, cfg)
+sys.exit(0 if best and best[1].get("hasTrustDialogAccepted") else 1)
+PY
 }
 
 # ── misc ────────────────────────────────────────────────────────────────────

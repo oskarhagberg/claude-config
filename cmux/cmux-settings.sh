@@ -71,7 +71,25 @@ workspacePresentationMode
 # sidebarAppearanceDefaultsVersion is a migration marker, not identity: carrying
 # it stops cmux re-applying its stock sidebar appearance over what we imported.
 
-cmux_running() { pgrep -x cmux >/dev/null 2>&1; }
+# WHY NOT pgrep. cmux is a bundled .app, and macOS records a bundle's accounting
+# name as its executable *path* truncated to 16 characters — `ps -o comm` prints
+# "/Applications/cm", not "cmux". So `pgrep cmux` never matches, with or without
+# -f, and this guard silently returned "not running" while cmux was live. That
+# is the worst possible failure for it: the import wrote every key underneath a
+# running cmux, which flushed its in-memory preferences over them on quit, and
+# not one setting landed. Match the bundle path in full `ps` output instead, and
+# short-circuit when this script is itself running inside a cmux terminal.
+#
+# And not `ps ... | grep -q` either: this file runs under `set -o pipefail`, and
+# `grep -q` exits at the first match, which SIGPIPEs `ps` and makes the pipeline
+# fail even though the match succeeded. Match the captured string instead.
+cmux_running() {
+  [ -n "${CMUX_BUNDLE_ID:-}${CMUX_PANEL_ID:-}" ] && return 0
+  case "$(ps -axo args= 2>/dev/null)" in
+    */cmux.app/Contents/MacOS/cmux*) return 0 ;;
+  esac
+  return 1
+}
 
 # Read one key as {type,value}; prints nothing when the key is unset.
 read_key() {

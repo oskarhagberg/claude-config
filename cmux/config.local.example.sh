@@ -52,8 +52,11 @@ NAMING_ON_TICKET=1
 SLUG_MODEL="claude-haiku-4-5-20251001"
 
 # ── cmux-agent launcher ─────────────────────────────────────────────────────
-# 1 = run `wt switch --create <slug>` so each agent gets its own git worktree.
-# Needs worktrunk (`brew install worktrunk`); install.sh offers to install it.
+# 1 = pass `--worktree <slug>` to claude, so each agent gets its own git
+# worktree at <repo>/.claude/worktrees/<slug>, on branch worktree-<slug>, locked
+# to that session's pid. No worktrunk needed. It lives *inside* the repo on
+# purpose: worktrunk's sibling <repo>.<slug> layout falls outside MANAGED_REPOS
+# and would switch the naming hook off for the whole session.
 AGENT_WORKTREE=0
 
 AGENT_MODEL=""          # --model  passed to claude; empty = claude's default

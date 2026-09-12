@@ -111,15 +111,35 @@ CLAUDE_ARGS=""
 [ "$AGENT_REMOTE_CONTROL" = "1" ] && [ -n "$SLUG" ] \
   && CLAUDE_ARGS="$CLAUDE_ARGS --remote-control $(printf '%q' "$SLUG")"
 
-SHELL_LINE=""
+# Claude will not start in a directory it has not been trusted in, so check
+# before opening a workspace — otherwise the message lands in a pane that closes
+# a moment later and the launch just looks like a flicker.
+if ! trust_accepted "$WS_CWD"; then
+  echo "error: Claude Code has not been trusted in $WS_CWD." >&2
+  echo "       Run \`claude\` there once and accept the trust dialog, then retry." >&2
+  exit 1
+fi
+
+# ONE worktree, and claude owns it: <repo>/.claude/worktrees/<slug>, on branch
+# worktree-<slug>, locked to the session's pid for as long as it runs.
+#
+# Worktrunk is deliberately NOT used here, though it was at first. `wt switch
+# --create <slug>` puts its worktree in a *sibling* directory, <repo>.<slug>,
+# which is outside MANAGED_REPOS — so in_managed_repo() says no and the naming
+# hook switches itself off for the entire session. Running both tools produced
+# two worktrees and two branches per launch, with worktrunk's left orphaned.
+# Inside .claude/worktrees the worktree stays within the repo and everything
+# that keys off MANAGED_REPOS keeps working.
 if [ "$AGENT_WORKTREE" = "1" ] && [ -n "$SLUG" ]; then
-  # `wt` is a shell function from .zshrc wrapping the worktrunk binary, so this
-  # has to go through the workspace's interactive shell — hence `cmux send`
-  # rather than `workspace create --command`.
-  SHELL_LINE="wt switch --create $(printf '%q' "$SLUG") >/dev/null 2>&1; "
   CLAUDE_ARGS="$CLAUDE_ARGS --worktree $(printf '%q' "$SLUG")"
 fi
-SHELL_LINE="${SHELL_LINE}claude${CLAUDE_ARGS} $(printf '%q' "$LINE"); exit"
+RUN="claude${CLAUDE_ARGS} $(printf '%q' "$LINE")"
+
+# Close the workspace when the session ends cleanly, keep it when it does not.
+# An unconditional `; exit` used to close the pane the instant claude exited
+# non-zero, taking the error with it — every failed launch presented as a
+# workspace that appeared and vanished for no stated reason.
+SHELL_LINE="$RUN; __rc=\$?; [ \$__rc -eq 0 ] && exit; echo; echo \"[cmux-agent] exited \$__rc — workspace kept open so you can read the error above.\""
 
 # ── go ──────────────────────────────────────────────────────────────────────
 OUT=$("$CMUX_BIN" workspace create --name "$NAME" --cwd "$WS_CWD" 2>&1)
