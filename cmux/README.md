@@ -312,7 +312,8 @@ until that is answered.
 | Pill links to GitHub, not Linear | `PR_LINK_TARGET=github`, or the repo is not in a Linear workspace with the GitHub integration. |
 | Workspace not renamed | It already has a `<TICKET> <text>` title (deliberate), or the dedupe marker is set for that prompt, or `cwd` is outside `MANAGED_REPOS`. |
 | cmux settings did not import | cmux was running. Quit it and re-run `cmux-settings.sh import`. |
-| Statusline shows `Usage: ~` | Nothing is writing `.statusline-usage-cache`, and the script's swift fallback was edited out. Both belong to **Claude Usage.app**. See below. |
+| Statusline shows `Usage: ~` | Nothing is writing `.statusline-usage-cache`, or the script's swift fallback is gone or has no `fetch-claude-usage.swift` to call. All of it belongs to **Claude Usage.app**. See below. |
+| Statusline has no colours | `COLOR_MODE=monochrome` in `statusline-config.txt`. Change it in the app's "Statusline Colors" panel, not by editing the file — the app overwrites it. |
 | Statusline is blank | `statusLine.command` points at a path that does not exist on this machine. `install.sh` repoints it; `--doctor` reports it. |
 
 Everything logs to `~/.claude/logs/cmux-integration.log`.
@@ -347,7 +348,30 @@ cp /tmp/statusline-command.sh /tmp/statusline-config.txt ~/.claude/
 ~/.claude/cmux/install.sh
 ```
 
-If they are lost anyway, reopening Claude Usage.app reinstalls them.
+**Reopening Claude Usage.app does NOT reinstall them.** Its `StatuslineService`
+installs on demand, not on launch, and it tracks that it already did
+(`notch.hooks.status_installed`). If the files are lost, either:
+
+- **change any option in the app's "Statusline Colors" settings panel** — the app
+  then rewrites both files, and reinstalls `fetch-claude-usage.swift` with a fresh
+  session key. This is the better path: git cannot restore that swift file, since
+  it is gitignored and never committed; and edits you make to
+  `statusline-config.txt` by hand are overwritten the next time the app writes it.
+- or recover the script from this repo's history, which still holds the last
+  tracked copy:
+
+  ```bash
+  git fetch origin
+  git show origin/backup/other-laptop-20260912^:statusline-command.sh > ~/.claude/statusline-command.sh
+  chmod +x ~/.claude/statusline-command.sh
+  git show origin/backup/other-laptop-20260912^:statusline-config.txt  > ~/.claude/statusline-config.txt
+  ```
+
+A missing script leaves the status line blank, which is easy to misread as a
+Claude Code problem. Do not reach for `/statusline` to fill the gap — it builds an
+unrelated starship-based line and repoints `statusLine.command` at it, and
+`install.sh` will not correct that, because it only repoints a path that fails to
+resolve. Restore the app's script and set the command back by hand.
 
 The same reset also deletes `skills/humly-intro` and `skills/tracey` on a machine
 that still tracks them. That one is intentional — they were Humly-only, `tracey`
