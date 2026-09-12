@@ -275,26 +275,43 @@ until that is answered.
 | Pill links to GitHub, not Linear | `PR_LINK_TARGET=github`, or the repo is not in a Linear workspace with the GitHub integration. |
 | Workspace not renamed | It already has a `<TICKET> <text>` title (deliberate), or the dedupe marker is set for that prompt, or `cwd` is outside `MANAGED_REPOS`. |
 | cmux settings did not import | cmux was running. Quit it and re-run `cmux-settings.sh import`. |
-| Statusline shows `Usage: ~` | Nothing is writing `~/.claude/.statusline-usage-cache`. That cache is produced by **Claude Usage.app**, not by the statusline. See below. |
+| Statusline shows `Usage: ~` | Nothing is writing `.statusline-usage-cache`, and the script's swift fallback was edited out. Both belong to **Claude Usage.app**. See below. |
 | Statusline is blank | `statusLine.command` points at a path that does not exist on this machine. `install.sh` repoints it; `--doctor` reports it. |
 
 Everything logs to `~/.claude/logs/cmux-integration.log`.
 
-### The statusline's usage segment
+### The statusline is owned by Claude Usage.app — do not track it
 
-The usage percentage is **not** produced by `statusline-command.sh`. That script
-only *reads* `~/.claude/.statusline-usage-cache`, and shows `Usage: ~` when the
-cache is missing or older than 300s. The cache is written every 30s by
-`/Applications/Claude Usage.app` — a separate app, not part of this repo. A
-machine without it shows `Usage: ~` and nothing else is wrong.
+`statusline-command.sh`, `statusline-config.txt`, `fetch-claude-usage.swift` and
+`.statusline-usage-cache` are **generated and rewritten by
+/Applications/Claude Usage.app**, not by this repo. Proof: 57 of 60 distinctive
+code lines from `statusline-command.sh` appear verbatim inside the app binary,
+which embeds the whole script twice.
 
-There used to be a second producer: `statusline-command.sh` shelled out to
-`fetch-claude-usage.swift`, which called `claude.ai/api/organizations/<org>/usage`
-with an **`sk-ant-sid…` session token hardcoded on line 6**. That fallback was
-removed — a credential in a file inside a repo that pushes to GitHub is not worth
-a statusline segment. The file is gitignored and was verified never to have been
-committed on any ref. So: install Claude Usage.app on a machine that should show
-usage; do not restore the swift fallback.
+All four are gitignored, because committing an app-generated file means a later
+`git checkout` silently overwrites what the app just wrote — which is how the app
+gets broken. `fetch-claude-usage.swift` additionally embeds an `sk-ant-sid…`
+session token, so it must never reach a remote (verified absent from every blob
+in this repo's history).
+
+The usage percentage is not computed by the statusline. The script only *reads*
+`.statusline-usage-cache` and shows `Usage: ~` when it is missing or older than
+300s; the app writes that cache every 30s, and the script's
+`fetch-claude-usage.swift` fallback covers the gap when the app is not running.
+Leave that fallback in place — removing it is what makes usage disappear.
+
+**Pulling onto a machine where these were still tracked will delete them**, since
+git removes files that a commit untracks. Keep them across the pull:
+
+```bash
+cp ~/.claude/statusline-command.sh ~/.claude/statusline-config.txt /tmp/
+git fetch && git reset --hard origin/main
+cp /tmp/statusline-command.sh /tmp/statusline-config.txt ~/.claude/
+~/.claude/cmux/install.sh
+```
+
+If they are lost anyway, reopening Claude Usage.app reinstalls them.
+`install.sh --doctor` reports a missing or hand-edited script.
 
 `statusLine.command` is an absolute path on purpose. `~` expansion is verified to
 work for `hooks`, but not for `statusLine`, so `install.sh` normalises the path

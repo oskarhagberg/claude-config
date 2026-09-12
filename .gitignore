@@ -11,14 +11,17 @@ settings.local.json
 daemon/
 daemon-auth-*
 
-# ── symlinks pointing outside this repo (would dangle elsewhere) ────────────
-skills/find-skills
-
-# ── dead code: the statusline no longer shells out to this ──────────────────
-fetch-claude-usage.swift
-
 # ── per-machine config (each laptop writes its own) ─────────────────────────
 cmux/config.local.sh
+
+# ── owned by Claude Usage.app — NEVER track these ───────────────────────────
+# The app generates and rewrites all four. Committing them means a git
+# checkout silently overwrites what the app just wrote, which breaks the app.
+# fetch-claude-usage.swift additionally embeds an sk-ant-sid session token.
+statusline-command.sh
+statusline-config.txt
+fetch-claude-usage.swift
+.statusline-usage-cache
 
 # ── big state: conversations, plugins, snapshots ────────────────────────────
 projects/
@@ -35,7 +38,6 @@ local/
 stats-cache.json
 gh-pr-status-cache.json
 mcp-needs-auth-cache.json
-.statusline-usage-cache
 
 # ── ephemeral per-session state ─────────────────────────────────────────────
 shell-snapshots/
