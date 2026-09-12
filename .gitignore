@@ -15,11 +15,11 @@ daemon-auth-*
 cmux/config.local.sh
 
 # ── Humly-only: this machine is a Humly machine, the other is not ───────────
-# Org-specific skills stay here. The Humly/vinga auto-mode environment and
-# tracey permissions live in the repo they describe instead:
-# /Users/oskar/humly/vinga/.claude/settings.local.json (gitignored there).
-skills/humly-intro/
-skills/tracey/
+# Nothing org-specific is tracked here. The Humly/vinga auto-mode environment
+# and tracey permissions live in the repo they describe instead:
+#   /Users/oskar/humly/vinga/.claude/settings.local.json (gitignored there)
+# and the tracey skills are project skills in that repo
+#   (.claude/skills/tracey-annotate, tracey-requirement).
 
 # ── owned by Claude Usage.app — NEVER track these ───────────────────────────
 # The app generates and rewrites all four. Committing them means a git

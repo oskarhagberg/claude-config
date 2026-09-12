@@ -211,7 +211,7 @@ where config lives, not by remembering to edit things:
 | `~/.claude/settings.json` (tracked) | hooks, statusLine, plugins, editor/tui prefs | yes — nothing org-specific in it |
 | `<repo>/.claude/settings.local.json` (gitignored in that repo) | `autoMode` (environment, allow, soft_deny) and tracey permissions | no |
 | `~/.claude/cmux/config.local.sh` (gitignored) | repo roots, ticket prefixes, Linear workspace, autopilot skill | no |
-| `~/.claude/skills/humly-intro`, `skills/tracey` (gitignored) | Humly-only skills | no |
+| `<repo>/.claude/skills/` | org tooling skills (vinga: `tracey-annotate`, `tracey-requirement`) | no |
 
 The settings cascade is
 `~/.claude/settings.json` → `<repo>/.claude/settings.json` → `<repo>/.claude/settings.local.json`
