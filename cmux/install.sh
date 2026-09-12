@@ -224,6 +224,49 @@ if [ -f "$LOCAL" ]; then
   )
 fi
 
+# ── 3b. statusLine path ──────────────────────────────────────────────────────
+# The statusLine command is an absolute path, because `~` expansion there is not
+# something we could verify the way we could for hooks. An absolute path does
+# not survive a different username, so normalise it to THIS machine's $HOME
+# whenever the current one does not resolve.
+hdr "Status line"
+python3 - "$SETTINGS" "$MODE" <<'PY2'
+import json, os, sys, collections
+path, mode = sys.argv[1], sys.argv[2]
+if not os.path.exists(path): sys.exit(0)
+d = json.load(open(path), object_pairs_hook=collections.OrderedDict)
+sl = d.get("statusLine") or {}
+cmd = sl.get("command", "")
+want = os.path.expanduser("~/.claude/statusline-command.sh")
+if not cmd:
+    print("  \033[33m!\033[0m no statusLine configured"); sys.exit(0)
+ref = cmd.split()[-1]
+if os.path.exists(os.path.expanduser(ref)):
+    print("  \033[32m\u2713\033[0m statusLine command resolves"); sys.exit(0)
+if os.path.exists(want):
+    if mode == "doctor":
+        print("  \033[33m!\033[0m statusLine points at a path that does not exist here")
+        print("       run install.sh (without --doctor) to repoint it")
+        sys.exit(0)
+    sl["command"] = "bash " + want
+    json.dump(d, open(path, "w"), indent=2); open(path, "a").write("\n")
+    print("  \033[32m\u2713\033[0m statusLine repointed at " + want)
+else:
+    print("  \033[31m\u2717\033[0m statusline-command.sh is missing")
+PY2
+
+# The usage segment needs a producer for ~/.claude/.statusline-usage-cache.
+if [ -f "$HOME/.claude/.statusline-usage-cache" ]; then
+  age=$(( $(date +%s) - $(stat -f %m "$HOME/.claude/.statusline-usage-cache" 2>/dev/null || echo 0) ))
+  if [ "$age" -lt 300 ]; then ok "usage cache is fresh (${age}s)"
+  else warn "usage cache is ${age}s stale — the statusline will show 'Usage: ~'"; fi
+elif [ -d "/Applications/Claude Usage.app" ]; then
+  warn "Claude Usage.app is installed but has not written the cache yet"
+else
+  warn "no usage cache and no Claude Usage.app — the statusline will show 'Usage: ~'"
+  warn "  the old fetch-claude-usage.swift fallback was dropped (it embedded a token)"
+fi
+
 [ "$MODE" = "doctor" ] && { hdr "Doctor only — nothing changed."; exit 0; }
 
 # ── 3. executables + symlink ────────────────────────────────────────────────
