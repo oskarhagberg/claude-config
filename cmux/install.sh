@@ -10,6 +10,9 @@
 # other than the four hook entries it owns.
 set -uo pipefail
 
+# shellcheck disable=SC1091
+. "$HOME/.claude/cmux/config.sh"
+
 CMUX_DIR="$HOME/.claude/cmux"
 SETTINGS="$HOME/.claude/settings.json"
 LOCAL="$CMUX_DIR/config.local.sh"
@@ -76,16 +79,33 @@ confirm() { # confirm <prompt> <default y|n>
 # ── 1. dependencies ─────────────────────────────────────────────────────────
 hdr "Dependencies"
 MISSING=0
-for tool in cmux gh jq python3 git; do
+for tool in gh jq python3 git; do
   if command -v "$tool" >/dev/null 2>&1; then ok "$tool"
   else bad "$tool — required"; MISSING=1; fi
 done
+
+# cmux is special: its CLI is on PATH only inside terminals cmux spawns, so a
+# plain login shell legitimately has no `cmux` while cmux is installed fine.
+# config.sh resolves the app bundle; report which one we got.
+if command -v cmux >/dev/null 2>&1; then
+  ok "cmux (on PATH)"
+elif [ -x "$CMUX_BIN" ]; then
+  ok "cmux (bundled CLI at $CMUX_BIN)"
+  warn "  not on PATH — add this to your shell profile to use it by hand:"
+  warn "    export PATH=\"$(dirname "$CMUX_BIN"):\$PATH\""
+else
+  bad "cmux — required, and no bundle at /Applications/cmux.app"; MISSING=1
+fi
 
 if gh auth status >/dev/null 2>&1; then ok "gh is authenticated"
 else warn "gh is not authenticated — PR lookups will find nothing. Run: gh auth login"; fi
 
 if command -v linear >/dev/null 2>&1; then ok "linear (optional: better slugs from issue titles)"
-else warn "linear not found (optional) — slugs fall back to the prompt text"; fi
+else
+  warn "linear not found (optional) — workspace names fall back to the prompt text"
+  warn "  install with: brew install schpet/tap/linear   (then: linear auth login)"
+  warn "  note: plain \`brew install linear\` is a different thing — the Linear desktop app"
+fi
 
 # worktrunk provides `wt`, used only when AGENT_WORKTREE=1.
 WT_OK=0

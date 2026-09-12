@@ -61,7 +61,22 @@ AGENT_OPEN_ISSUE=1      # open the ticket in a browser split when launching
 # refuses rather than guessing.
 AUTOPILOT_SKILL=""
 
-CMUX_BIN="${CMUX_BIN:-cmux}"
+# The cmux CLI. cmux puts its bundled binary on PATH only for terminals it
+# spawns itself — a plain login shell has no `cmux`, and there is no symlink in
+# /usr/local/bin — so resolve the bundle directly rather than requiring PATH.
+# Order: an explicit CMUX_BIN, then PATH, then the env var cmux exports, then
+# the standard install location.
+if [ -z "${CMUX_BIN:-}" ]; then
+  if command -v cmux >/dev/null 2>&1; then
+    CMUX_BIN="cmux"
+  elif [ -x "${CMUX_BUNDLED_CLI_PATH:-}" ]; then
+    CMUX_BIN="$CMUX_BUNDLED_CLI_PATH"
+  elif [ -x "/Applications/cmux.app/Contents/Resources/bin/cmux" ]; then
+    CMUX_BIN="/Applications/cmux.app/Contents/Resources/bin/cmux"
+  else
+    CMUX_BIN="cmux"   # not found; callers report it
+  fi
+fi
 STATE_DIR="/tmp/claude/cmux-integration"
 LOG_FILE="$HOME/.claude/logs/cmux-integration.log"
 
