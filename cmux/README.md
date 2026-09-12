@@ -201,6 +201,29 @@ to run while cmux is up.
 
 ---
 
+## Two machines, one identity boundary
+
+This checkout is a **Humly** machine; the other is not. The split is enforced by
+where config lives, not by remembering to edit things:
+
+| Lives in | Carries | Reaches the other laptop? |
+|---|---|---|
+| `~/.claude/settings.json` (tracked) | hooks, statusLine, plugins, editor/tui prefs | yes — nothing org-specific in it |
+| `<repo>/.claude/settings.local.json` (gitignored in that repo) | `autoMode` (environment, allow, soft_deny) and tracey permissions | no |
+| `~/.claude/cmux/config.local.sh` (gitignored) | repo roots, ticket prefixes, Linear workspace, autopilot skill | no |
+| `~/.claude/skills/humly-intro`, `skills/tracey` (gitignored) | Humly-only skills | no |
+
+The settings cascade is
+`~/.claude/settings.json` → `<repo>/.claude/settings.json` → `<repo>/.claude/settings.local.json`
+→ managed policy. **There is no user-level `settings.local.json`** — that file is
+project-scoped only, so org config cannot be hidden that way; it has to live in
+the repo it describes. Verified: an `env` var set only in a project's
+`settings.local.json` reached the Bash tool of a session started there.
+
+One key must stay in the user file: `permissions.defaultMode: "auto"` is
+deliberately ignored from project settings as repo-controllable, so moving it
+would silently drop auto mode.
+
 ## Design notes
 
 - **The review URL needs no Linear API call.** Linear documents a redirect: swap
