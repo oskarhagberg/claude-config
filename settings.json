@@ -1,8 +1,4 @@
 {
-  "statusLine": {
-    "type": "command",
-    "command": "bash /Users/oskar/.claude/statusline-command.sh"
-  },
   "permissions": {
     "allow": [
       "Bash(echo:*)",
@@ -26,10 +22,18 @@
     "deny": [
       "Read(.env)",
       "Read(.env.*)"
-    ]
+    ],
+    "defaultMode": "auto"
+  },
+  "model": "opus",
+  "statusLine": {
+    "type": "command",
+    "command": "bash /Users/oskar/.claude/statusline-command.sh"
   },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true
   },
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "skipAutoPermissionPrompt": true,
+  "tui": "fullscreen"
 }

@@ -27,5 +27,18 @@ telemetry/
 # File edit snapshots
 file-history/
 
+# Runtime state, logs & caches (machine-specific, regenerated)
+.last-cleanup
+.last-update-result.json
+.statusline-usage-cache
+daemon.log
+daemon/
+jobs/
+sessions/
+chrome/
+
+# Machine-specific symlink to external skills dir
+skills/find-skills
+
 # Personal secrets — never commit
 settings.local.json
