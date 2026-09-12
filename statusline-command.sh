@@ -323,12 +323,7 @@ if [ "$show_usage" = "1" ]; then
     fi
   fi
 
-  # Fall back to swift script if cache is stale or missing
-  if [ -z "$swift_result" ]; then
-    swift_result=$(swift "$HOME/.claude/fetch-claude-usage.swift" 2>/dev/null)
-  fi
-
-  if [ $? -eq 0 ] && [ -n "$swift_result" ]; then
+  if [ -n "$swift_result" ]; then
     utilization=$(echo "$swift_result" | cut -d'|' -f1)
     resets_at=$(echo "$swift_result" | cut -d'|' -f2)
 
