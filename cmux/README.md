@@ -36,13 +36,27 @@ git clone git@github.com:oskarhagberg/claude-config.git ~/.claude   # or: git pu
   (optional), and **offers to `brew install worktrunk`** when `wt` is missing;
 - asks for your repos, ticket prefixes, Linear workspace and agent preferences,
   then writes `config.local.sh` (backing up any existing one);
-- symlinks `~/.local/bin/cmux-agent`;
+- symlinks `~/.local/bin/cmux-agent`, and `cmux-autopilot` too when
+  `AUTOPILOT_SKILL` is set;
 - merges its four hook entries into `~/.claude/settings.json` without touching
   anything else in that file;
+- repoints `statusLine.command` at this machine's `$HOME` if the configured path
+  does not resolve here, and reports whether anything is still writing the usage
+  cache (see [the statusline section](#the-statusline-is-owned-by-claude-usageapp--do-not-track-it));
 - offers to import the shared cmux GUI settings.
 
 Other modes: `--doctor` (check only, change nothing), `--yes` (non-interactive,
-keeps existing config).
+keeps existing config). For a scripted install, `CMUX_INSTALL_STDIN=1` forces it
+to read answers from stdin:
+
+```bash
+printf '%s\n' ~/code/thing '(ABC|DEF)' humly linear '' n '' '' n \
+  | CMUX_INSTALL_STDIN=1 ~/.claude/cmux/install.sh
+```
+
+It refuses rather than guessing when it has no terminal and no readable stdin —
+proving the input source beats trusting `[ -r /dev/tty ]`, which passes on a
+machine with no controlling terminal and silently writes a config of defaults.
 
 Restart running Claude sessions afterwards so the hooks load.
 
@@ -334,6 +348,11 @@ cp /tmp/statusline-command.sh /tmp/statusline-config.txt ~/.claude/
 ```
 
 If they are lost anyway, reopening Claude Usage.app reinstalls them.
+
+The same reset also deletes `skills/humly-intro` and `skills/tracey` on a machine
+that still tracks them. That one is intentional — they were Humly-only, `tracey`
+is covered by the vinga project skills `tracey-annotate` and `tracey-requirement`,
+and nothing needs preserving.
 `install.sh --doctor` reports a missing or hand-edited script.
 
 `statusLine.command` is an absolute path on purpose. `~` expansion is verified to
