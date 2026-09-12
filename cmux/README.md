@@ -60,6 +60,16 @@ machine with no controlling terminal and silently writes a config of defaults.
 
 Restart running Claude sessions afterwards so the hooks load.
 
+### Requirements
+
+| Tool | Needed for | Install |
+|---|---|---|
+| `cmux` | everything | the app. **Its CLI is on PATH only inside terminals cmux spawns** — a plain login shell has none, and there is no symlink in `/usr/local/bin`. The scripts resolve `/Applications/cmux.app/Contents/Resources/bin/cmux` directly, so they do not care; add that directory to your PATH to run `cmux` by hand. |
+| `gh` (authenticated) | finding the PR for a branch | `brew install gh && gh auth login` |
+| `jq`, `python3`, `git` | everywhere | preinstalled or `brew` |
+| `linear` | *optional* — names workspaces from the issue title instead of the prompt text | `brew install schpet/tap/linear && linear auth login`. Plain `brew install linear` is the Linear **desktop app**, not this. |
+| `worktrunk` (`wt`) | *optional* — `AGENT_WORKTREE=1` | `brew install worktrunk` (install.sh offers it) |
+
 ---
 
 ## Files
