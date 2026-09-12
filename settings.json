@@ -1,8 +1,4 @@
 {
-  "statusLine": {
-    "type": "command",
-    "command": "bash /Users/oskar/.claude/statusline-command.sh"
-  },
   "permissions": {
     "allow": [
       "Bash(echo:*)",
@@ -26,10 +22,120 @@
     "deny": [
       "Read(.env)",
       "Read(.env.*)"
+    ],
+    "defaultMode": "auto"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/cmux/hook-pr-pane.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/cmux/hook-pr-pane.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/cmux/hook-pr-pane.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/cmux/hook-pr-pane.sh",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   },
-  "enabledPlugins": {
-    "superpowers@claude-plugins-official": true
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline-command.sh"
   },
-  "skipDangerousModePermissionPrompt": true
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "warp@claude-code-warp": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-code-warp": {
+      "source": {
+        "source": "github",
+        "repo": "warpdotdev/claude-code-warp"
+      }
+    }
+  },
+  "tui": "fullscreen",
+  "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
+  "editorMode": "normal",
+  "autoContinueAtUsageLimit": false,
+  "skipAutoPermissionPrompt": true,
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Bash(linear issue view:*)",
+      "Bash(linear issue update:*)",
+      "Bash(tracey_uncovered)",
+      "Bash(tracey_untested)",
+      "Bash(tracey_rule:*)"
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Bash(git push --force:*)",
+      "Bash(*prod-psql.sh*)"
+    ],
+    "environment": [
+      "### Org-wide",
+      "**Organization**: Humly (github.com/humlytech) \u2014 repo humlytech/vinga",
+      "**Cloud provider(s)**: Elastisys/UpCloud (managed Kubernetes, EU-sovereign); Coolify (development environment)",
+      "**Repository visibility**: Private (humlytech/vinga, confirmed via gh)",
+      "**Internal sharing / snippet hosting**: None configured \u2014 treat public paste/gist services as outside the trust boundary",
+      "**Secrets management**: 1Password (humly.1password.com); per-app secrets loaded via `op run --env-file=...`",
+      "**Default / protected branches**: `main` \u2014 ruleset-protected (active ruleset on `main`; classic branch-protection API reports none, but the ruleset is the real gate per CLAUDE.md)",
+      "**CI/CD deploy targets**: No staging \u2014 trunk deploys directly to production on Elastisys/UpCloud Kubernetes; Unleash feature flags gate user-facing features",
+      "**Network posture**: None configured",
+      "**Source control**: GitHub \u2014 humlytech/vinga (this repo) and its `origin` remote only",
+      "**Trusted internal domains**: humly.io, humly.co.uk, gohumly.com (internal tooling \u2014 Atlas, Dex, Renovate). Note: humly.com is explicitly a different, unrelated company and MUST NOT be treated as trusted",
+      "**Trusted cloud buckets**: None configured",
+      "**Key internal services**: Linear (team Vinga, id 5236a4c6-2b77-48b3-9203-b66c3bfeb9f4); GIAS/DfE API (fetched live, never cached)",
+      "**Internal package registry**: None configured",
+      "**Sensitive data locations & audiences**: PII vault in core-service (personal data stored encrypted; other services hold vault keys only); `packages/pii-vault/src/pii-annotation.ts`; `docs/blueprint/220-pii-vault.md`; no PII permitted in logs (structured logger only, console.log banned)",
+      "**Data retention / declassification**: Compliance recalculated from artefacts \u2014 never migrated from legacy status; GIAS fetched live from DfE API, never from cached legacy data",
+      "**Sensitive remote targets**: any namespace/host/container carrying `prod` or `production` as a whole segment; notably `tools/db-tools/prod-psql.sh` and terraform/Coolify production configs under `infra/`",
+      "**Protected deployment namespaces / environments**: production Kubernetes on Elastisys/UpCloud (no staging exists \u2014 trunk deploys directly to prod)",
+      "**Protected IaC scopes**: `infra/terraform/*` (database.tf, postgres.tf, server.tf, server_cloud_init.tf, ssh.tf, variables.tf), `infra/coolify/`, `infra/renovate/`, `infra/tracey/coolify/` \u2014 IAM, RBAC, networking, quota, and node-pool resources; anything tagged `prod`/`production`",
+      "### User-specific",
+      "**Primary use of Claude Code**: software development \u2014 autonomous CR delivery pipeline (cr-autopilot) against Linear issues for the Vinga modulith rewrite",
+      "**Trusted repo**: humlytech/vinga (this repo, private) at /Users/oskar/humly/vinga, and its `origin` remote (github.com:humlytech/vinga.git)",
+      "**Org-specific CLIs**: `linear` (Linear CLI), `tracey` (spec-traceability CLI), `gh` (GitHub CLI) \u2014 all used routinely in this repo's workflows",
+      "routine under this repo's `.claude/skills/` prefix: skill-driven workflows (cr-autopilot, babysit-prs, handle-pr-reviews, drift-detection, author-screen, author-nav-shell, design-review, data-modelling) operate routinely within this checkout"
+    ]
+  },
+  "agentPushNotifEnabled": true,
+  "model": "opus"
 }

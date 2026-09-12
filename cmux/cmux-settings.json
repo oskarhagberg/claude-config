@@ -1,0 +1,190 @@
+{
+  "domain": "com.cmuxterm.app",
+  "settings": [
+    {
+      "key": "appIconMode",
+      "type": "string",
+      "value": "dark"
+    },
+    {
+      "key": "appearanceMode",
+      "type": "string",
+      "value": "system"
+    },
+    {
+      "key": "cmuxDisableBundleIconPersistence",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "fileExplorer.isVisible",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "fileExplorer.width",
+      "type": "float",
+      "value": 276.0
+    },
+    {
+      "key": "newWorkspacePlacement",
+      "type": "string",
+      "value": "end"
+    },
+    {
+      "key": "notificationPaneFlashEnabled",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "preferredEditorCommand",
+      "type": "string",
+      "value": "zed"
+    },
+    {
+      "key": "rightSidebar.mode",
+      "type": "string",
+      "value": "files"
+    },
+    {
+      "key": "sidebarAppearanceDefaultsVersion",
+      "type": "integer",
+      "value": 1
+    },
+    {
+      "key": "sidebarBlendMode",
+      "type": "string",
+      "value": "withinWindow"
+    },
+    {
+      "key": "sidebarBlurOpacity",
+      "type": "float",
+      "value": 1.0
+    },
+    {
+      "key": "sidebarBranchDirectoryStacked",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "sidebarBranchVerticalLayout",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "sidebarCornerRadius",
+      "type": "float",
+      "value": 0.0
+    },
+    {
+      "key": "sidebarHideAllDetails",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "sidebarMakePullRequestClickable",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "sidebarMatchTerminalBackground",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "key": "sidebarMaterial",
+      "type": "string",
+      "value": "sidebar"
+    },
+    {
+      "key": "sidebarNotificationMessageLineLimit",
+      "type": "integer",
+      "value": 12
+    },
+    {
+      "key": "sidebarPathLastSegmentOnly",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "sidebarPreset",
+      "type": "string",
+      "value": "nativeSidebar"
+    },
+    {
+      "key": "sidebarShowBranchDirectory",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "sidebarShowLog",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "key": "sidebarShowPorts",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "sidebarShowProgress",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "key": "sidebarShowPullRequest",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "key": "sidebarShowSSH",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "key": "sidebarShowWorkspaceDescription",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "key": "sidebarState",
+      "type": "string",
+      "value": "followWindow"
+    },
+    {
+      "key": "sidebarTintHex",
+      "type": "string",
+      "value": "#000000"
+    },
+    {
+      "key": "sidebarTintOpacity",
+      "type": "float",
+      "value": 0.18
+    },
+    {
+      "key": "sidebarWatchGitStatus",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "key": "sidebarWrapWorkspaceTitles",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "key": "terminal.copyOnSelect",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "key": "workspaceAutoReorderOnNotification",
+      "type": "boolean",
+      "value": false
+    },
+    {
+      "key": "workspacePresentationMode",
+      "type": "string",
+      "value": "standard"
+    }
+  ]
+}

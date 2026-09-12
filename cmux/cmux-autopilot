@@ -1,0 +1,29 @@
+#!/bin/bash
+# Shortcut to the autopilot skill:
+#
+#   cmux-autopilot VIN-1760                    == cmux-agent /cr-autopilot VIN-1760
+#   cmux-autopilot VIN-1760 skip the migration == cmux-agent /cr-autopilot VIN-1760 skip the migration
+#
+# Which skill it means is config, not code: AUTOPILOT_SKILL in config.local.sh.
+# A machine without that skill gets cmux-agent's own "no skill '<name>' in any
+# of: ..." error, which is the right message.
+set -uo pipefail
+source "$HOME/.claude/cmux/config.sh"
+
+if [ -z "${1:-}" ]; then
+  cat >&2 <<USAGE
+usage: cmux-autopilot <TICKET> [extra prompt...]
+
+  Runs /${AUTOPILOT_SKILL:-<unset>} in a fresh cmux workspace.
+  Set AUTOPILOT_SKILL in config.local.sh to point it at a different skill.
+USAGE
+  exit 2
+fi
+
+if [ -z "${AUTOPILOT_SKILL:-}" ]; then
+  echo "error: AUTOPILOT_SKILL is not set in config.local.sh" >&2
+  echo "       set it to the skill this shortcut should run, e.g. cr-autopilot" >&2
+  exit 2
+fi
+
+exec "$HOME/.claude/cmux/cmux-agent" "/$AUTOPILOT_SKILL" "$@"

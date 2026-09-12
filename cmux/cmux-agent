@@ -1,0 +1,151 @@
+#!/bin/bash
+# Open a new cmux workspace and start a Claude session in it.
+#
+#   cmux-agent /cr-autopilot VIN-1760              a skill
+#   cmux-agent why is staging timing out           a prompt
+#   cmux-agent /code-review also check the migration   a skill plus prose
+#   cmux-agent --cwd ~/code/other fix the flaky test
+#
+# Replaces the old launch.sh + cmux-agent + cmux-autopilot trio: one code path,
+# one set of config. Everything machine-specific comes from config.local.sh —
+# see AGENT_* there for worktrees, model, effort and remote control.
+set -uo pipefail
+source "$HOME/.claude/cmux/config.sh"
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: cmux-agent [--cwd <path>] [/<skill>] [args or prompt...]
+
+  /<skill> args    run a skill; the skill must exist in AGENT_SKILL_DIRS
+  prompt...        run a freeform prompt
+  /<skill> prose   both — the prose is appended to the skill invocation
+
+  --cwd <path>     working directory for the workspace
+                   (default: $PWD when it is inside a managed repo,
+                    else the first MANAGED_REPOS entry, else $PWD)
+USAGE
+  exit 2
+}
+
+CWD_OVERRIDE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --cwd) CWD_OVERRIDE="${2:-}"; shift 2 ;;
+    -h|--help) usage ;;
+    *) break ;;
+  esac
+done
+
+ALL="$*"
+[ -n "${ALL// /}" ] || usage
+
+# ── skill vs prompt ─────────────────────────────────────────────────────────
+# Decide on the first WORD of the whole input, not on $1, so quoting the whole
+# thing and passing separate words behave identically.
+FIRST="${ALL%% *}"
+REST="${ALL#"$FIRST"}"; REST="${REST# }"
+FIRST_CLEAN="${FIRST#/}"
+
+find_skill_dir() {
+  local name="$1" dir
+  [ -n "$name" ] || return 1
+  while IFS= read -r dir; do
+    [ -n "$dir" ] || continue
+    [ -d "$dir/$name" ] && { printf '%s' "$dir/$name"; return 0; }
+  done <<< "$AGENT_SKILL_DIRS"
+  return 1
+}
+
+MODE="prompt"
+SKILL_DIR=""
+if SKILL_DIR=$(find_skill_dir "$FIRST_CLEAN"); then
+  MODE="skill"
+elif [ "${FIRST#/}" != "$FIRST" ]; then
+  # Explicitly /-prefixed but no such skill: a typo, not a prompt.
+  echo "error: no skill '$FIRST_CLEAN' in any of:" >&2
+  printf '%s\n' "$AGENT_SKILL_DIRS" | sed '/^$/d;s/^/  /' >&2
+  echo "(drop the leading '/' to run it as a prompt instead)" >&2
+  exit 2
+fi
+
+if [ "$MODE" = "skill" ]; then
+  LINE="/$FIRST_CLEAN"
+  [ -n "$REST" ] && LINE="/$FIRST_CLEAN $REST"
+  RAW_FLAG=""
+else
+  LINE="$ALL"
+  RAW_FLAG="--raw"
+fi
+
+# ── working directory ───────────────────────────────────────────────────────
+if [ -n "$CWD_OVERRIDE" ]; then
+  WS_CWD="$CWD_OVERRIDE"
+elif in_managed_repo "$PWD"; then
+  WS_CWD="$PWD"
+else
+  WS_CWD=$(printf '%s\n' "$MANAGED_REPOS" | sed '/^$/d' | head -1)
+  [ -n "$WS_CWD" ] || WS_CWD="$PWD"
+fi
+[ -d "$WS_CWD" ] || { echo "error: cwd '$WS_CWD' is not a directory" >&2; exit 1; }
+
+# ── name ────────────────────────────────────────────────────────────────────
+# Derived synchronously (a `linear issue view` plus a haiku call, ~15s) rather
+# than refined in the background, because the name also becomes the git worktree
+# and therefore the branch that carries the PR. A stub branch name is not worth
+# the saved seconds.
+echo "Deriving a name for: $LINE"
+NAME=$("$HOME/.claude/cmux/derive-name.sh" $RAW_FLAG "$LINE" 2>/dev/null)
+if [ -z "$NAME" ]; then
+  NAME=$(printf '%s' "$LINE" | tr -s ' ' | cut -c1-28)
+  log "cmux-agent: no name derived for '$LINE', falling back to '$NAME'"
+fi
+SLUG=$(kebab "$NAME")
+TICKET=$(find_ticket "$LINE")
+echo "Name: $NAME  (slug: $SLUG)"
+
+# ── the claude command ──────────────────────────────────────────────────────
+CLAUDE_ARGS=""
+[ -n "$AGENT_MODEL" ]  && CLAUDE_ARGS="$CLAUDE_ARGS --model $(printf '%q' "$AGENT_MODEL")"
+[ -n "$AGENT_EFFORT" ] && CLAUDE_ARGS="$CLAUDE_ARGS --effort $(printf '%q' "$AGENT_EFFORT")"
+[ -n "$SLUG" ]         && CLAUDE_ARGS="$CLAUDE_ARGS --name $(printf '%q' "$SLUG")"
+[ "$AGENT_REMOTE_CONTROL" = "1" ] && [ -n "$SLUG" ] \
+  && CLAUDE_ARGS="$CLAUDE_ARGS --remote-control $(printf '%q' "$SLUG")"
+
+SHELL_LINE=""
+if [ "$AGENT_WORKTREE" = "1" ] && [ -n "$SLUG" ]; then
+  # `wt` is a shell function from .zshrc wrapping the worktrunk binary, so this
+  # has to go through the workspace's interactive shell — hence `cmux send`
+  # rather than `workspace create --command`.
+  SHELL_LINE="wt switch --create $(printf '%q' "$SLUG") >/dev/null 2>&1; "
+  CLAUDE_ARGS="$CLAUDE_ARGS --worktree $(printf '%q' "$SLUG")"
+fi
+SHELL_LINE="${SHELL_LINE}claude${CLAUDE_ARGS} $(printf '%q' "$LINE"); exit"
+
+# ── go ──────────────────────────────────────────────────────────────────────
+OUT=$("$CMUX_BIN" workspace create --name "$NAME" --cwd "$WS_CWD" 2>&1)
+WS=$(parse_workspace_id "$OUT")
+if [ -z "$WS" ]; then
+  echo "error: cmux workspace create failed: $OUT" >&2
+  exit 1
+fi
+
+"$CMUX_BIN" send --workspace "$WS" "$SHELL_LINE
+" >/dev/null 2>&1
+
+# Pre-seed the naming hook's dedupe marker: this launch owns the name, so the
+# hook firing inside the new session must not derive the same slug again.
+KEY=$(printf '%s' "$LINE" | cut -c1-400 | shasum | cut -c1-12)
+printf '%s' "$KEY" > "$STATE_DIR/ws-${WS}.named" 2>/dev/null
+
+# Issue pill + tab, when this machine has Linear and the line names a ticket.
+# The PR hooks take the pill over from here the moment a PR exists.
+ISSUE_URL=$(linear_issue_url "$TICKET")
+if [ -n "$ISSUE_URL" ]; then
+  "$CMUX_BIN" set-status "$STATUS_KEY" "$TICKET" --url "$ISSUE_URL" \
+    --workspace "$WS" >/dev/null 2>&1
+  [ "${AGENT_OPEN_ISSUE:-1}" = "1" ] && \
+    "$CMUX_BIN" browser open-split --workspace "$WS" "$ISSUE_URL" >/dev/null 2>&1
+fi
+
+log "cmux-agent[$MODE]: $WS cwd=$WS_CWD name='$NAME' line='$LINE'"
+echo "Launched in cmux $WS (cwd $WS_CWD)."
