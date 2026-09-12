@@ -1,31 +1,70 @@
-# Session & conversation history (can grow to 1.5 GB+)
+# ~/.claude — synced between machines via the claude-config repo.
+#
+# The rule: commit CONFIGURATION (settings, skills, scripts), never STATE
+# (sessions, caches, logs, history) and never CREDENTIALS. State that is
+# committed conflicts on every pull between two laptops; credentials must not
+# reach a remote at all.
+
+# ── credentials ─────────────────────────────────────────────────────────────
+settings.local.json
+# daemon/control.key is a credential
+daemon/
+daemon-auth-*
+
+# ── symlinks pointing outside this repo (would dangle elsewhere) ────────────
+skills/find-skills
+
+# ── dead code: the statusline no longer shells out to this ──────────────────
+fetch-claude-usage.swift
+
+# ── per-machine config (each laptop writes its own) ─────────────────────────
+cmux/config.local.sh
+
+# ── big state: conversations, plugins, snapshots ────────────────────────────
 projects/
 history.jsonl
-backups/
-
-# plugins
 plugins/
+file-history/
+context-mode/
 
-# Runtime / cache
-statsig/
-local/
+# ── caches ──────────────────────────────────────────────────────────────────
 cache/
 paste-cache/
+statsig/
+local/
 stats-cache.json
+gh-pr-status-cache.json
+mcp-needs-auth-cache.json
+.statusline-usage-cache
 
-# Per-session state (ephemeral)
+# ── ephemeral per-session state ─────────────────────────────────────────────
 shell-snapshots/
 session-env/
+sessions/
 plans/
 tasks/
 todos/
+jobs/
+bridge-spawn/
+ide/
+.cc-writes/
 
-# Debug & telemetry
+# ── logs, debug, telemetry ──────────────────────────────────────────────────
+logs/
+daemon.log
 debug/
 telemetry/
+feedback/
 
-# File edit snapshots
-file-history/
+# ── runtime markers ─────────────────────────────────────────────────────────
+.last-cleanup
+.last-update-result.json
+policy-limits.json
+remote-settings.json
 
-# Personal secrets — never commit
-settings.local.json
+# ── local backups and scratch ───────────────────────────────────────────────
+backups/
+downloads/
+*.bak
+*.bak-*
+settings.json.pre-*
