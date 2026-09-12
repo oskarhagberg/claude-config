@@ -1,79 +1,42 @@
 # ~/.claude — synced between machines via the claude-config repo.
 #
-# The rule: commit CONFIGURATION (settings, skills, scripts), never STATE
-# (sessions, caches, logs, history) and never CREDENTIALS. State that is
-# committed conflicts on every pull between two laptops; credentials must not
-# reach a remote at all.
+# ALLOWLIST, NOT DENYLIST. Claude Code and its plugins own this directory and
+# add new subdirectories without warning — `chrome/` (the Claude-in-Chrome
+# native host wrapper), `daemon/` (which holds control.key, a credential),
+# `context-mode/`, `jobs/`, `feedback/` have all appeared here. A denylist has
+# to be updated for each one, and every miss is committed silently: that is how
+# a credential and four app-generated files nearly reached this remote.
+#
+# So: ignore everything, then re-include exactly what we deliberately track.
+# A new app directory is now ignored by default. The failure mode flips from
+# "secret leaks" to "you notice a file you wanted isn't tracked", which is the
+# right way round.
+#
+# The rule for what earns a line below: commit CONFIGURATION, never STATE,
+# never CREDENTIALS, and never a file another program generates (it would be
+# overwritten by a checkout — see cmux/README.md on Claude Usage.app).
 
-# ── credentials ─────────────────────────────────────────────────────────────
-settings.local.json
-# daemon/control.key is a credential
-daemon/
-daemon-auth-*
+/*
 
-# ── per-machine config (each laptop writes its own) ─────────────────────────
-cmux/config.local.sh
+!/.gitignore
+!/README.md
+!/settings.json
+!/skills-manager.sh
+!/skills/
+!/skills-disabled/
+!/cmux/
 
-# ── Humly-only: this machine is a Humly machine, the other is not ───────────
-# Nothing org-specific is tracked here. The Humly/vinga auto-mode environment
-# and tracey permissions live in the repo they describe instead:
-#   /Users/oskar/humly/vinga/.claude/settings.local.json (gitignored there)
-# and the tracey skills are project skills in that repo
-#   (.claude/skills/tracey-annotate, tracey-requirement).
+# ── exclusions inside the allowed trees ─────────────────────────────────────
+# Per-machine cmux config: each laptop writes its own.
+/cmux/config.local.sh
+/cmux/config.local.sh.bak-*
 
-# ── owned by Claude Usage.app — NEVER track these ───────────────────────────
-# The app generates and rewrites all four. Committing them means a git
-# checkout silently overwrites what the app just wrote, which breaks the app.
-# fetch-claude-usage.swift additionally embeds an sk-ant-sid session token.
-statusline-command.sh
-statusline-config.txt
-fetch-claude-usage.swift
-.statusline-usage-cache
-
-# ── big state: conversations, plugins, snapshots ────────────────────────────
-projects/
-history.jsonl
-plugins/
-file-history/
-context-mode/
-
-# ── caches ──────────────────────────────────────────────────────────────────
-cache/
-paste-cache/
-statsig/
-local/
-stats-cache.json
-gh-pr-status-cache.json
-mcp-needs-auth-cache.json
-
-# ── ephemeral per-session state ─────────────────────────────────────────────
-shell-snapshots/
-session-env/
-sessions/
-plans/
-tasks/
-todos/
-jobs/
-bridge-spawn/
-ide/
-.cc-writes/
-
-# ── logs, debug, telemetry ──────────────────────────────────────────────────
-logs/
-daemon.log
-debug/
-telemetry/
-feedback/
-
-# ── runtime markers ─────────────────────────────────────────────────────────
-.last-cleanup
-.last-update-result.json
-policy-limits.json
-remote-settings.json
-
-# ── local backups and scratch ───────────────────────────────────────────────
-backups/
-downloads/
-*.bak
-*.bak-*
-settings.json.pre-*
+# Notes on things the allowlist now covers implicitly, kept so nobody re-adds
+# them by hand:
+#   daemon/                  holds control.key — a credential
+#   chrome/                  Claude-in-Chrome native messaging host wrapper
+#   statusline-command.sh    ) generated and rewritten by Claude Usage.app;
+#   statusline-config.txt    ) committing them means a checkout clobbers the app
+#   fetch-claude-usage.swift ) and this one embeds an sk-ant-sid session token
+#   settings.local.json      never read at user level, but never commit it either
+#   projects/ history.jsonl plugins/ file-history/ context-mode/   bulk state
