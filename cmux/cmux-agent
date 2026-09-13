@@ -16,7 +16,8 @@ usage() {
   cat >&2 <<'USAGE'
 usage: cmux-agent [--cwd <path>] [/<skill>] [args or prompt...]
 
-  /<skill> args    run a skill; the skill must exist in AGENT_SKILL_DIRS
+  /<skill> args    run a skill from <cwd>/.claude/skills (or a parent's)
+                   or AGENT_SKILL_DIRS
   prompt...        run a freeform prompt
   /<skill> prose   both — the prose is appended to the skill invocation
 
@@ -39,6 +40,17 @@ done
 ALL="$*"
 [ -n "${ALL// /}" ] || usage
 
+# ── working directory ───────────────────────────────────────────────────────
+if [ -n "$CWD_OVERRIDE" ]; then
+  WS_CWD="$CWD_OVERRIDE"
+elif in_managed_repo "$PWD"; then
+  WS_CWD="$PWD"
+else
+  WS_CWD=$(printf '%s\n' "$MANAGED_REPOS" | sed '/^$/d' | head -1)
+  [ -n "$WS_CWD" ] || WS_CWD="$PWD"
+fi
+[ -d "$WS_CWD" ] || { echo "error: cwd '$WS_CWD' is not a directory" >&2; exit 1; }
+
 # ── skill vs prompt ─────────────────────────────────────────────────────────
 # Decide on the first WORD of the whole input, not on $1, so quoting the whole
 # thing and passing separate words behave identically.
@@ -46,13 +58,28 @@ FIRST="${ALL%% *}"
 REST="${ALL#"$FIRST"}"; REST="${REST# }"
 FIRST_CLEAN="${FIRST#/}"
 
+# Project skills first, as claude itself resolves them: every .claude/skills
+# from the workspace cwd up to (not including) $HOME, so a worktree under
+# <repo>/.claude/worktrees/<slug> still finds <repo>/.claude/skills. Then the
+# configured AGENT_SKILL_DIRS. This is why the cwd is resolved above — skill
+# lookup used to run first and could only ever see ~/.claude/skills.
+skill_search_dirs() {
+  local dir="$WS_CWD"
+  while [ -n "$dir" ] && [ "$dir" != "/" ] && [ "$dir" != "$HOME" ]; do
+    [ -d "$dir/.claude/skills" ] && printf '%s\n' "$dir/.claude/skills"
+    dir=$(dirname "$dir")
+  done
+  printf '%s\n' "$AGENT_SKILL_DIRS"
+}
+SKILL_DIRS=$(skill_search_dirs | sed '/^$/d' | awk '!seen[$0]++')
+
 find_skill_dir() {
   local name="$1" dir
   [ -n "$name" ] || return 1
   while IFS= read -r dir; do
     [ -n "$dir" ] || continue
     [ -d "$dir/$name" ] && { printf '%s' "$dir/$name"; return 0; }
-  done <<< "$AGENT_SKILL_DIRS"
+  done <<< "$SKILL_DIRS"
   return 1
 }
 
@@ -63,7 +90,7 @@ if SKILL_DIR=$(find_skill_dir "$FIRST_CLEAN"); then
 elif [ "${FIRST#/}" != "$FIRST" ]; then
   # Explicitly /-prefixed but no such skill: a typo, not a prompt.
   echo "error: no skill '$FIRST_CLEAN' in any of:" >&2
-  printf '%s\n' "$AGENT_SKILL_DIRS" | sed '/^$/d;s/^/  /' >&2
+  printf '%s\n' "$SKILL_DIRS" | sed 's/^/  /' >&2
   echo "(drop the leading '/' to run it as a prompt instead)" >&2
   exit 2
 fi
@@ -76,17 +103,6 @@ else
   LINE="$ALL"
   RAW_FLAG="--raw"
 fi
-
-# ── working directory ───────────────────────────────────────────────────────
-if [ -n "$CWD_OVERRIDE" ]; then
-  WS_CWD="$CWD_OVERRIDE"
-elif in_managed_repo "$PWD"; then
-  WS_CWD="$PWD"
-else
-  WS_CWD=$(printf '%s\n' "$MANAGED_REPOS" | sed '/^$/d' | head -1)
-  [ -n "$WS_CWD" ] || WS_CWD="$PWD"
-fi
-[ -d "$WS_CWD" ] || { echo "error: cwd '$WS_CWD' is not a directory" >&2; exit 1; }
 
 # ── name ────────────────────────────────────────────────────────────────────
 # Derived synchronously (a `linear issue view` plus a haiku call, ~15s) rather

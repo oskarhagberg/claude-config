@@ -120,7 +120,7 @@ skills.
 | `AGENT_MODEL` / `AGENT_EFFORT` | Passed to `claude`. | claude's own defaults |
 | `AGENT_REMOTE_CONTROL` | `1` = `--remote-control <slug>`. | — |
 | `AGENT_OPEN_ISSUE` | `1` = open the ticket in a browser split at launch. | — |
-| `AGENT_SKILL_DIRS` | Dirs searched for `cmux-agent /<skill>`, one per line. | `~/.claude/skills` |
+| `AGENT_SKILL_DIRS` | Dirs searched for `cmux-agent /<skill>`, one per line, after the workspace cwd's own `.claude/skills`. | `~/.claude/skills` |
 | `AUTOPILOT_SKILL` | Skill the `cmux-autopilot` shortcut runs. | the shortcut refuses rather than guessing |
 
 **Do not set `TICKET_RE` to something permissive** like `[A-Z]{2,6}`. It also
@@ -155,7 +155,10 @@ cmux-agent --cwd ~/code/other fix the flaky test
 The first word decides the mode. A `/`-prefixed first word is strict: unknown
 means exit 2 with the list of skill dirs, never a silent fall-through to prompt
 mode. Working directory is `$PWD` when it is inside a managed repo, else the
-first `MANAGED_REPOS` entry, else `$PWD`.
+first `MANAGED_REPOS` entry, else `$PWD`. It is resolved *before* the skill
+lookup, which searches every `.claude/skills` from that directory up to `$HOME`
+(project skills, e.g. `<repo>/.claude/skills/refine`) and then
+`AGENT_SKILL_DIRS`.
 
 `cmux-autopilot VIN-1760 [extra prompt]` is a one-line shortcut for
 `cmux-agent /$AUTOPILOT_SKILL VIN-1760 [extra prompt]` — the skill it means is
