@@ -19,7 +19,7 @@ Four things it does:
 3. **`cmux-agent`.** Opens a new workspace, optionally its own git worktree, and
    starts Claude on a skill and/or a prompt in it.
 4. **crex layout auto-restore.** On the first pane of a cmux launch, restores a
-   layout saved with [crex](https://github.com/cmux/cmux-resurrect)
+   layout saved with [crex](https://github.com/drolosoft/cmux-resurrect)
    (`cmux-resurrect`) — once per launch, never on top of a session already
    under way. Off until `CREX_LAYOUT` names a saved layout.
 
@@ -46,6 +46,10 @@ git clone git@github.com:oskarhagberg/claude-config.git ~/.claude   # or: git pu
   `AUTOPILOT_SKILL` is set;
 - merges its five hook entries into `~/.claude/settings.json` without touching
   anything else in that file;
+- offers to `brew install drolosoft/tap/cmux-resurrect` (crex), to append the two
+  crex lines to `~/.zshrc`, and to save the cmux session you are sitting in as
+  the layout that gets restored — see [crex layout
+  auto-restore](#crex-layout-auto-restore);
 - repoints `statusLine.command` at this machine's `$HOME` if the configured path
   does not resolve here, and reports whether anything is still writing the usage
   cache (see [the statusline section](#the-statusline-is-owned-by-claude-usageapp--do-not-track-it));
@@ -73,7 +77,7 @@ Restart running Claude sessions afterwards so the hooks load.
 | `cmux` | everything | the app. **Its CLI is on PATH only inside terminals cmux spawns** — a plain login shell has none, and there is no symlink in `/usr/local/bin`. The scripts resolve `/Applications/cmux.app/Contents/Resources/bin/cmux` directly, so they do not care; add that directory to your PATH to run `cmux` by hand. |
 | `gh` (authenticated) | finding the PR for a branch | `brew install gh && gh auth login` |
 | `jq`, `python3`, `git` | everywhere | preinstalled or `brew` |
-| `crex` | *optional* — layout auto-restore only. A normal PATH install, unlike cmux's CLI. | `brew install crex` |
+| `crex` | *optional* — layout auto-restore only. A normal PATH install, unlike cmux's CLI. | `brew install drolosoft/tap/cmux-resurrect` (install.sh offers it). `crex` is an **alias** of that formula, so plain `brew install crex` fails until the tap is added. |
 | `linear` | *optional* — names workspaces from the issue title instead of the prompt text: `cmux-agent ALI-42` becomes `ALI-42 web docker file` rather than the bare ticket | `brew install schpet/tap/linear && linear auth login` (install.sh offers it). Plain `brew install linear` is the Linear **desktop app**, not this. Check with `linear auth whoami`. |
 
 ---
@@ -250,25 +254,40 @@ worktree and every pill there degrades to a bare `PR #123`.
 
 ## crex layout auto-restore
 
-[crex](https://github.com/cmux/cmux-resurrect) saves and restores cmux layouts.
-`crex-autorestore.sh` brings one back on the first pane of a launch. One line in
-`~/.zshrc` loads it:
+[crex](https://github.com/drolosoft/cmux-resurrect) (`cmux-resurrect`) saves and
+restores cmux layouts. `crex-autorestore.sh` brings one back on the first pane
+of a launch.
+
+**`install.sh` sets up all three parts**, reporting each before offering it:
+
+1. **crex itself** — `brew install drolosoft/tap/cmux-resurrect`. `crex` is an
+   alias of that formula, not a formula of its own, so `brew install crex` fails
+   on a machine that has not tapped it.
+2. **Two lines in `~/.zshrc`**, appended under one marker after a timestamped
+   backup, and only the ones not already there — `crex setup` writes the first
+   itself, so a machine often needs just the second:
+
+   ```bash
+   bindkey -s '^G' 'crex pop\n'                    # Ctrl+G: layout picker
+   [ -x ~/.claude/cmux/crex-autorestore.sh ] && ~/.claude/cmux/crex-autorestore.sh
+   ```
+
+3. **A layout to restore.** `crex save <name>` snapshots the cmux session you
+   are in right now — every workspace, pane split and cwd — so `install.sh`
+   offers to save the session you are sitting in and writes that name into
+   `CREX_LAYOUT` for you. It refuses when run outside cmux, where crex has
+   nothing live to snapshot.
+
+By hand, that is:
 
 ```bash
-[ -x ~/.claude/cmux/crex-autorestore.sh ] && ~/.claude/cmux/crex-autorestore.sh
-```
-
-Then, once per machine:
-
-```bash
+brew install drolosoft/tap/cmux-resurrect
 crex save my-day                     # there is nothing to restore until this
 # config.local.sh
 CREX_LAYOUT="my-day"
 ```
 
-`install.sh` reports all of it — crex on PATH, whether `CREX_LAYOUT` names a
-layout that exists, whether `~/.zshrc` loads the script — but never edits
-`~/.zshrc`, which is a personal file whose ordering is yours.
+`--doctor` reports every part of this and changes none of it.
 
 **Executed, not sourced.** It needs nothing from the interactive shell but the
 environment cmux exports, and sourcing would drag `config.sh`'s whole namespace,

@@ -67,6 +67,21 @@ ask() { # ask <prompt> <default> -> echoes the answer
   printf '%s' "${reply:-$def}"
 }
 
+set_local_knob() { # set_local_knob <name> <value> -> rewrite config.local.sh in place
+  [ -f "$LOCAL" ] || return 1
+  cp "$LOCAL" "$LOCAL.bak-$(date +%Y%m%d-%H%M%S)"
+  python3 - "$LOCAL" "$1" "$2" <<'PYK'
+import re, sys
+path, name, value = sys.argv[1], sys.argv[2], sys.argv[3]
+s = open(path).read()
+line = '%s="%s"' % (name, value.replace('"', ''))
+s, n = re.subn(r'(?m)^%s=.*$' % re.escape(name), line.replace('\\', '\\\\'), s, count=1)
+if not n:
+    s = s.rstrip('\n') + '\n\n' + line + '\n'
+open(path, 'w').write(s)
+PYK
+}
+
 confirm() { # confirm <prompt> <default y|n>
   local prompt="$1" def="${2:-n}" reply
   if [ "$MODE" != "interactive" ]; then [ "$def" = "y" ]; return; fi
@@ -342,27 +357,100 @@ else
 fi
 
 # ── 3d. crex layout auto-restore ────────────────────────────────────────────
-# Optional, and reported rather than installed: the loader line belongs in a
-# personal ~/.zshrc whose ordering is the user's business, so this never edits
-# it. `install.sh --doctor` therefore also answers "why did my layout not come
-# back?" without anyone having to remember the line.
+# Three separate things, each reported before it is offered, and none of them
+# done behind your back in --doctor: the binary, the two ~/.zshrc lines, and a
+# saved layout to point at. `crex` is an ALIAS of the cmux-resurrect formula in
+# a third-party tap, so `brew install crex` alone fails on a machine that has
+# not tapped it.
 hdr "crex layout auto-restore"
 ZSHRC="$HOME/.zshrc"
-LOADER="[ -x ~/.claude/cmux/crex-autorestore.sh ] && ~/.claude/cmux/crex-autorestore.sh"
-if ! command -v "$CREX_BIN" >/dev/null 2>&1; then
-  warn "$CREX_BIN not on PATH — auto-restore is off (brew install crex)"
-elif [ -z "$CREX_LAYOUT" ]; then
-  warn "CREX_LAYOUT empty — auto-restore is off. \`crex save <name>\`, then set it in config.local.sh"
-elif ! "$CREX_BIN" show "$CREX_LAYOUT" >/dev/null 2>&1; then
-  bad "CREX_LAYOUT='$CREX_LAYOUT' is not a saved layout — \`crex list\` shows what is"
+CREX_FORMULA="drolosoft/tap/cmux-resurrect"
+LOADER='[ -x ~/.claude/cmux/crex-autorestore.sh ] && ~/.claude/cmux/crex-autorestore.sh'
+POP_BIND="bindkey -s '^G' 'crex pop\\n'"
+
+if command -v "$CREX_BIN" >/dev/null 2>&1; then
+  ok "crex installed ($(command -v "$CREX_BIN"))"
+elif [ "$MODE" = "doctor" ]; then
+  warn "crex not installed — auto-restore is off. brew install $CREX_FORMULA"
+elif ! command -v brew >/dev/null 2>&1; then
+  warn "crex not installed, and no Homebrew here to offer it"
 else
-  ok "layout '$CREX_LAYOUT' exists, mode $CREX_RESTORE_MODE"
+  warn "crex not installed — layout auto-restore is off"
+  if confirm "    Install it now with \`brew install $CREX_FORMULA\`?" y; then
+    brew install "$CREX_FORMULA" && ok "crex installed" || bad "brew install failed"
+  fi
 fi
-if grep -qF 'crex-autorestore.sh' "$ZSHRC" 2>/dev/null; then
-  ok "$ZSHRC loads crex-autorestore.sh"
+
+# The two ~/.zshrc lines: the Ctrl+G layout picker and the auto-restore loader.
+# Only the missing ones are appended, under one marker, after a backup — this
+# file is personal and may already carry either line from `crex setup`.
+if [ ! -f "$ZSHRC" ]; then
+  warn "no $ZSHRC — add these to whatever your shell reads:"
+  printf '      %s\n      %s\n' "$POP_BIND" "$LOADER"
 else
-  warn "$ZSHRC does not call crex-autorestore.sh. Add:"
-  printf '      %s\n' "$LOADER"
+  ZADD=""
+  grep -qF 'crex pop' "$ZSHRC"            || ZADD="$POP_BIND"
+  grep -qF 'crex-autorestore.sh' "$ZSHRC" || ZADD="${ZADD:+$ZADD
+}$LOADER"
+  if [ -z "$ZADD" ]; then
+    ok "$ZSHRC has the Ctrl+G picker and the auto-restore loader"
+  elif [ "$MODE" = "doctor" ]; then
+    warn "$ZSHRC is missing:"
+    printf '%s\n' "$ZADD" | sed 's/^/      /'
+  else
+    warn "$ZSHRC is missing:"
+    printf '%s\n' "$ZADD" | sed 's/^/      /'
+    if confirm "    Append it? (a timestamped backup is kept)" y; then
+      cp "$ZSHRC" "$ZSHRC.bak-$(date +%Y%m%d-%H%M%S)"
+      {
+        printf '\n# ── crex, via ~/.claude/cmux/install.sh ─────────────────────────────────\n'
+        printf '%s\n' "$ZADD"
+      } >> "$ZSHRC"
+      ok "appended to $ZSHRC — new shells pick it up"
+    fi
+  fi
+fi
+
+# A layout to restore. `crex save` snapshots the LIVE cmux session, so it only
+# works from inside one, and it overwrites an existing name without asking.
+if ! command -v "$CREX_BIN" >/dev/null 2>&1; then
+  : # nothing to say about layouts without crex
+elif [ -n "$CREX_LAYOUT" ] && "$CREX_BIN" show "$CREX_LAYOUT" >/dev/null 2>&1; then
+  ok "layout '$CREX_LAYOUT' exists, mode $CREX_RESTORE_MODE"
+elif [ "$MODE" = "doctor" ]; then
+  if [ -z "$CREX_LAYOUT" ]; then
+    warn "CREX_LAYOUT empty — nothing is restored. \`crex save my-day\`, then set it in config.local.sh"
+  else
+    bad "CREX_LAYOUT='$CREX_LAYOUT' is not a saved layout — \`crex list\` shows what is"
+  fi
+else
+  if [ -z "$CREX_LAYOUT" ]; then
+    warn "no layout configured — nothing is restored yet"
+  else
+    bad "CREX_LAYOUT='$CREX_LAYOUT' is not a saved layout"
+  fi
+  echo "  \`crex save <name>\` snapshots the cmux session you are in right now —" >&2
+  echo "  every workspace, pane split and cwd — and that name goes in CREX_LAYOUT." >&2
+  echo "  Arrange the session you want back before answering yes." >&2
+  # Asked as yes/no first, then the name. One prompt with an "empty skips"
+  # default cannot do both: ask() returns the default on an empty answer, so
+  # "just press enter to skip" would in fact save a layout called my-day.
+  R_SAVE=""
+  confirm "    Save this cmux session as a layout now?" y \
+    && R_SAVE=$(ask "    Name it" "${CREX_LAYOUT:-my-day}")
+  if [ -z "$R_SAVE" ]; then
+    warn "skipped — later: \`crex save my-day\`, then CREX_LAYOUT=\"my-day\" in config.local.sh"
+  elif [ -z "${CMUX_SOCKET_PATH:-}" ]; then
+    bad "not inside a cmux terminal — crex has no live session to snapshot. Re-run from one."
+  elif "$CREX_BIN" save "$R_SAVE" >/dev/null 2>&1; then
+    if set_local_knob CREX_LAYOUT "$R_SAVE"; then
+      ok "saved layout '$R_SAVE' and set CREX_LAYOUT in config.local.sh"
+    else
+      warn "saved layout '$R_SAVE' — set CREX_LAYOUT=\"$R_SAVE\" in config.local.sh by hand"
+    fi
+  else
+    bad "crex save '$R_SAVE' failed — run it by hand to see why"
+  fi
 fi
 
 [ "$MODE" = "doctor" ] && { hdr "Doctor only — nothing changed."; exit 0; }
