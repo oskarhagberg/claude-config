@@ -289,6 +289,27 @@ CREX_LAYOUT="my-day"
 
 `--doctor` reports every part of this and changes none of it.
 
+**Two things in crex's own config bite at restore time**, neither of them in
+this repo, both worth checking on a new machine (`install.sh --doctor` warns
+about the first):
+
+- `auto_accept = ['claude']` in `~/.config/crex/config.toml` rewrites every
+  `claude` in a restored layout into `claude --dangerously-skip-permissions`.
+  `crex setup` offers to set it. A restore is the last place to skip permission
+  prompts silently, so drop the line unless you mean it.
+- A layout captures whatever command each pane was running, so saving from the
+  tab you typed `crex save my-day` in bakes that command into the layout — and
+  restoring it re-runs the save over the layout you just restored. Save from a
+  session that has no such tab, or delete the `[[workspace.pane.surface]]` block
+  from the `.toml` afterwards.
+
+A layout restores the *shape* of a session — workspaces, panes, cwds, commands.
+It does not resume Claude sessions: the stored command is a bare `claude`.
+Resuming is cmux's own startup restore, which keeps a `--resume <session-id>`
+binding per surface in `~/Library/Application Support/cmux/`. The two do not
+overlap, and after cmux restores a session the first-pane test fails, so
+auto-restore correctly does nothing.
+
 **Executed, not sourced.** It needs nothing from the interactive shell but the
 environment cmux exports, and sourcing would drag `config.sh`'s whole namespace,
 and its bash 3.2 idioms, into every zsh prompt.

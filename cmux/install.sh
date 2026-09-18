@@ -381,6 +381,16 @@ else
   fi
 fi
 
+# crex's own config, not this repo's: `auto_accept` rewrites every `claude` it
+# restores into `claude --dangerously-skip-permissions`. `crex setup` offers to
+# set it, so a second machine can acquire it quietly — and a layout restore is
+# the last place you want a permission prompt skipped without being asked.
+CREX_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/crex/config.toml"
+if grep -qE "^auto_accept[^#]*claude" "$CREX_CONF" 2>/dev/null; then
+  warn "crex auto_accept is on — restored panes start \`claude --dangerously-skip-permissions\`"
+  warn "  remove the auto_accept line from $CREX_CONF for plain \`claude\`"
+fi
+
 # The two ~/.zshrc lines: the Ctrl+G layout picker and the auto-restore loader.
 # Only the missing ones are appended, under one marker, after a backup — this
 # file is personal and may already carry either line from `crex setup`.
