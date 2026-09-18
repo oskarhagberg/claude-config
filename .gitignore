@@ -31,6 +31,11 @@
 /cmux/config.local.sh
 /cmux/config.local.sh.bak-*
 
+# Skills the Claude app syncs down from the account. App-generated state inside
+# an otherwise tracked tree: `!/skills/` re-included it, and a checkout would
+# overwrite whatever the app had just written.
+/skills/synced/
+
 # Notes on things the allowlist now covers implicitly, kept so nobody re-adds
 # them by hand:
 #   daemon/                  holds control.key — a credential

@@ -7,7 +7,7 @@
 #
 # Idempotent: safe to re-run after every `git pull`. It never overwrites an
 # existing config.local.sh without asking, and never touches settings.json keys
-# other than the four hook entries it owns.
+# other than the five hook entries it owns.
 set -uo pipefail
 
 # shellcheck disable=SC1091
@@ -18,6 +18,7 @@ SETTINGS="$HOME/.claude/settings.json"
 LOCAL="$CMUX_DIR/config.local.sh"
 BIN_DIR="$HOME/.local/bin"
 HOOK="~/.claude/cmux/hook-pr-pane.sh"
+NAME_HOOK="~/.claude/cmux/hook-name-workspace.sh"
 
 MODE="interactive"
 case "${1:-}" in
@@ -149,13 +150,14 @@ fi
 if [ "$WRITE_CONFIG" = "1" ] && [ "$MODE" != "doctor" ]; then
   # Seed the prompts from whatever is already configured.
   D_REPOS=""; D_TICKET=""; D_LINEAR=""; D_TARGET="linear"
-  D_SKILLS=""; D_WT=1; D_MODEL=""; D_EFFORT=""
+  D_SKILLS=""; D_WT=1; D_MODEL=""; D_EFFORT=""; D_CREX=""
   # shellcheck disable=SC1090
   [ -f "$LOCAL" ] && . "$LOCAL" 2>/dev/null && {
     D_REPOS="${MANAGED_REPOS:-}"; D_TICKET="${TICKET_RE:-}"
     D_LINEAR="${LINEAR_WORKSPACE:-}"; D_TARGET="${PR_LINK_TARGET:-linear}"
     D_SKILLS="${NAMING_SKILLS:-}"; D_WT="${AGENT_WORKTREE:-1}"
     D_MODEL="${AGENT_MODEL:-}"; D_EFFORT="${AGENT_EFFORT:-}"
+    D_CREX="${CREX_LAYOUT:-}"
   }
   [ -n "$D_REPOS" ] || D_REPOS="$PWD"
 
@@ -204,6 +206,12 @@ INTRO
   echo "  Leave empty if this machine has no such skill." >&2
   R_AUTO=$(ask "  Autopilot skill" "${AUTOPILOT_SKILL:-}")
 
+  echo >&2
+  echo "  Saved crex layout to restore on the first pane of a cmux launch." >&2
+  echo "  Leave empty unless \`crex save <name>\` has written one — crex ships a" >&2
+  echo "  \`demo\` layout and restoring that on every launch is not what you want." >&2
+  R_CREX=$(ask "  crex layout" "$D_CREX")
+
   R_MODEL=$(ask "  Model for cmux-agent sessions (empty = claude's default)" "$D_MODEL")
   R_EFFORT=$(ask "  Effort for cmux-agent sessions (empty = claude's default)" "$D_EFFORT")
 
@@ -228,7 +236,9 @@ INTRO
     printf 'AGENT_REMOTE_CONTROL=1\n'
     printf 'AGENT_OPEN_ISSUE=1\n'
     printf 'AUTOPILOT_SKILL="%s"\n' "$R_AUTO"
-    printf 'AGENT_SKILL_DIRS="%s"\n' "$HOME/.claude/skills"
+    printf 'AGENT_SKILL_DIRS="%s"\n\n' "$HOME/.claude/skills"
+    printf 'CREX_LAYOUT="%s"\n' "$R_CREX"
+    printf 'CREX_RESTORE_MODE="add"\n'
   } > "$LOCAL"
   ok "wrote $LOCAL"
 fi
@@ -331,6 +341,30 @@ else
     warn "run \`claude\` once in each and accept the trust dialog, or cmux-agent will exit 1 there"
 fi
 
+# ── 3d. crex layout auto-restore ────────────────────────────────────────────
+# Optional, and reported rather than installed: the loader line belongs in a
+# personal ~/.zshrc whose ordering is the user's business, so this never edits
+# it. `install.sh --doctor` therefore also answers "why did my layout not come
+# back?" without anyone having to remember the line.
+hdr "crex layout auto-restore"
+ZSHRC="$HOME/.zshrc"
+LOADER="[ -x ~/.claude/cmux/crex-autorestore.sh ] && ~/.claude/cmux/crex-autorestore.sh"
+if ! command -v "$CREX_BIN" >/dev/null 2>&1; then
+  warn "$CREX_BIN not on PATH — auto-restore is off (brew install crex)"
+elif [ -z "$CREX_LAYOUT" ]; then
+  warn "CREX_LAYOUT empty — auto-restore is off. \`crex save <name>\`, then set it in config.local.sh"
+elif ! "$CREX_BIN" show "$CREX_LAYOUT" >/dev/null 2>&1; then
+  bad "CREX_LAYOUT='$CREX_LAYOUT' is not a saved layout — \`crex list\` shows what is"
+else
+  ok "layout '$CREX_LAYOUT' exists, mode $CREX_RESTORE_MODE"
+fi
+if grep -qF 'crex-autorestore.sh' "$ZSHRC" 2>/dev/null; then
+  ok "$ZSHRC loads crex-autorestore.sh"
+else
+  warn "$ZSHRC does not call crex-autorestore.sh. Add:"
+  printf '      %s\n' "$LOADER"
+fi
+
 [ "$MODE" = "doctor" ] && { hdr "Doctor only — nothing changed."; exit 0; }
 
 # ── 3. executables + symlink ────────────────────────────────────────────────
@@ -360,14 +394,19 @@ case ":$PATH:" in *":$BIN_DIR:"*) ok "$BIN_DIR is on PATH" ;;
 
 # ── 4. settings.json hooks ──────────────────────────────────────────────────
 hdr "Claude Code hooks  ($SETTINGS)"
-python3 - "$SETTINGS" "$HOOK" <<'PY'
+python3 - "$SETTINGS" "$HOOK" "$NAME_HOOK" <<'PY'
 import json, os, sys, shutil, datetime
-path, cmd = sys.argv[1], sys.argv[2]
+path, cmd, name_cmd = sys.argv[1], sys.argv[2], sys.argv[3]
 d = json.load(open(path)) if os.path.exists(path) else {}
 hooks = d.setdefault("hooks", {})
-spec = {"PostToolUse": "Bash", "PreToolUse": "AskUserQuestion", "Stop": None, "SessionStart": None}
+# (event, matcher, command). The first four are the PR-pane triggers; the fifth
+# is workspace naming, which README documents but nothing registered until
+# 2026-09-18 — so naming had never once fired outside its own tests.
+spec = [("PostToolUse", "Bash", cmd), ("PreToolUse", "AskUserQuestion", cmd),
+        ("Stop", None, cmd), ("SessionStart", None, cmd),
+        ("UserPromptSubmit", None, name_cmd)]
 added = []
-for event, matcher in spec.items():
+for event, matcher, cmd in spec:
     entries = hooks.setdefault(event, [])
     if any(h.get("command") == cmd for e in entries for h in e.get("hooks", [])):
         continue
@@ -383,7 +422,7 @@ if added:
     open(path, "a").write("\n")
     print("  \033[32m✓\033[0m added hooks: " + ", ".join(added))
 else:
-    print("  \033[32m✓\033[0m all four hooks already wired")
+    print("  \033[32m✓\033[0m all five hooks already wired")
 PY
 
 # ── 5. cmux GUI settings ────────────────────────────────────────────────────

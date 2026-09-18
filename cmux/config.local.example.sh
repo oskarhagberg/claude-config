@@ -71,3 +71,15 @@ AGENT_SKILL_DIRS="$HOME/.claude/skills"
 # Skill that the `cmux-autopilot <TICKET>` shortcut runs. Leave empty on a
 # machine that has no such skill — the shortcut then refuses rather than guessing.
 AUTOPILOT_SKILL=""
+
+# ── crex layout auto-restore ────────────────────────────────────────────────
+# Saved crex layout that crex-autorestore.sh restores on the first pane of a
+# cmux launch. Leave empty until `crex save <name>` has written one — crex ships
+# a `demo` layout, and restoring that on every launch is nobody's intent.
+CREX_LAYOUT=""
+
+# 'add' never closes a live workspace; 'replace' closes them all, including
+# agent worktrees mid-session. Only these two values are accepted: crex's own
+# default, 'ask', opens an interactive picker that a detached restore cannot
+# answer, so the script always passes one of these explicitly.
+CREX_RESTORE_MODE="add"

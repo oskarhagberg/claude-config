@@ -4,7 +4,7 @@ Portable glue between [cmux](https://cmux.com) workspaces and Claude Code
 sessions. Lives in `~/.claude/cmux`, which is tracked in the `claude-config`
 repo, so a second machine gets it with `git pull` + `install.sh`.
 
-Three things it does:
+Four things it does:
 
 1. **PR review link.** While a PR is open, the workspace's status pill points at
    the **Linear review page** for it — `VIN-1760 · PR #2302` →
@@ -18,6 +18,10 @@ Three things it does:
    in `ListAgents`, `/resume` and `SendMessage`.
 3. **`cmux-agent`.** Opens a new workspace, optionally its own git worktree, and
    starts Claude on a skill and/or a prompt in it.
+4. **crex layout auto-restore.** On the first pane of a cmux launch, restores a
+   layout saved with [crex](https://github.com/cmux/cmux-resurrect)
+   (`cmux-resurrect`) — once per launch, never on top of a session already
+   under way. Off until `CREX_LAYOUT` names a saved layout.
 
 Everything machine-specific lives in one gitignored file, `config.local.sh`.
 
@@ -40,7 +44,7 @@ git clone git@github.com:oskarhagberg/claude-config.git ~/.claude   # or: git pu
   then writes `config.local.sh` (backing up any existing one);
 - symlinks `~/.local/bin/cmux-agent`, and `cmux-autopilot` too when
   `AUTOPILOT_SKILL` is set;
-- merges its four hook entries into `~/.claude/settings.json` without touching
+- merges its five hook entries into `~/.claude/settings.json` without touching
   anything else in that file;
 - repoints `statusLine.command` at this machine's `$HOME` if the configured path
   does not resolve here, and reports whether anything is still writing the usage
@@ -69,6 +73,7 @@ Restart running Claude sessions afterwards so the hooks load.
 | `cmux` | everything | the app. **Its CLI is on PATH only inside terminals cmux spawns** — a plain login shell has none, and there is no symlink in `/usr/local/bin`. The scripts resolve `/Applications/cmux.app/Contents/Resources/bin/cmux` directly, so they do not care; add that directory to your PATH to run `cmux` by hand. |
 | `gh` (authenticated) | finding the PR for a branch | `brew install gh && gh auth login` |
 | `jq`, `python3`, `git` | everywhere | preinstalled or `brew` |
+| `crex` | *optional* — layout auto-restore only. A normal PATH install, unlike cmux's CLI. | `brew install crex` |
 | `linear` | *optional* — names workspaces from the issue title instead of the prompt text: `cmux-agent ALI-42` becomes `ALI-42 web docker file` rather than the bare ticket | `brew install schpet/tap/linear && linear auth login` (install.sh offers it). Plain `brew install linear` is the Linear **desktop app**, not this. Check with `linear auth whoami`. |
 
 ---
@@ -91,6 +96,7 @@ Restart running Claude sessions afterwards so the hooks load.
 | `cmux-autopilot` | Shortcut: `cmux-autopilot VIN-1760` → `cmux-agent /$AUTOPILOT_SKILL VIN-1760`. | yes |
 | `cmux-settings.sh` | `export`/`import`/`diff` cmux's own GUI settings. | yes |
 | `cmux-settings.json` | Those settings, as data. | yes |
+| `crex-autorestore.sh` | Restores the crex layout once per cmux launch. Run from `~/.zshrc`. | yes |
 
 Log: `~/.claude/logs/cmux-integration.log`. State: `/tmp/claude/cmux-integration`.
 
@@ -122,6 +128,8 @@ skills.
 | `AGENT_OPEN_ISSUE` | `1` = open the ticket in a browser split at launch. | — |
 | `AGENT_SKILL_DIRS` | Dirs searched for `cmux-agent /<skill>`, one per line, after the workspace cwd's own `.claude/skills`. | `~/.claude/skills` |
 | `AUTOPILOT_SKILL` | Skill the `cmux-autopilot` shortcut runs. | the shortcut refuses rather than guessing |
+| `CREX_LAYOUT` | Saved crex layout restored on the first pane of a launch. | auto-restore off |
+| `CREX_RESTORE_MODE` | `add` (never closes a workspace) or `replace`. | — |
 
 **Do not set `TICKET_RE` to something permissive** like `[A-Z]{2,6}`. It also
 matches `GAP-16`, `UTF-8` and `PR-2302`, and you get workspaces named after a
@@ -136,6 +144,7 @@ TICKET_RE='(VIN|CORP)'                    TICKET_RE='(ABC)'
 LINEAR_WORKSPACE="humly"                  LINEAR_WORKSPACE="humly"
 NAMING_SKILLS='(cr-autopilot|write-cr…)'  NAMING_SKILLS=''      # no such skills
 AUTOPILOT_SKILL="cr-autopilot"            AUTOPILOT_SKILL=''    # no such skill
+CREX_LAYOUT="my-day"                      CREX_LAYOUT=''        # nothing saved yet
 AGENT_WORKTREE=1                          AGENT_WORKTREE=0      # no worktrees
 ```
 
@@ -214,6 +223,12 @@ worktree and every pill there degrades to a bare `PR #123`.
   with `NAMING_ON_TICKET=1` — a ticket mention. Derivation takes ~15s, so the
   hook returns instantly and `rename-worker.sh` does the work detached; a prompt
   is never delayed.
+
+  Its `settings.json` entry is the fifth hook `install.sh` merges, and it was
+  missing until 2026-09-18: `install.sh` registered only the four PR-pane
+  triggers, so on a machine installed from this repo naming was documented,
+  implemented, tested — and never once fired. If the log holds `pr-status:`
+  lines but no `name-workspace:` lines, that is this bug; re-run `install.sh`.
 - **PR review link** — four triggers, all into `hook-pr-pane.sh`, all requiring
   `CMUX_WORKSPACE_ID`. None of them gate on `MANAGED_REPOS`: an open PR is its
   own qualification, so any repo with a GitHub remote gets a pill.
@@ -227,8 +242,65 @@ worktree and every pill there degrades to a bare `PR #123`.
 
   All four exit 0 with no stdout and hand off to `pr-status-worker.sh` detached,
   so no tool call is blocked or altered and no turn waits on `gh`.
+- **crex layout auto-restore** — not a Claude hook at all: `~/.zshrc` runs
+  `crex-autorestore.sh` in the shell of every terminal cmux spawns, and the
+  script decides in three cheap tests whether this is a launch's first pane.
 
 ---
+
+## crex layout auto-restore
+
+[crex](https://github.com/cmux/cmux-resurrect) saves and restores cmux layouts.
+`crex-autorestore.sh` brings one back on the first pane of a launch. One line in
+`~/.zshrc` loads it:
+
+```bash
+[ -x ~/.claude/cmux/crex-autorestore.sh ] && ~/.claude/cmux/crex-autorestore.sh
+```
+
+Then, once per machine:
+
+```bash
+crex save my-day                     # there is nothing to restore until this
+# config.local.sh
+CREX_LAYOUT="my-day"
+```
+
+`install.sh` reports all of it — crex on PATH, whether `CREX_LAYOUT` names a
+layout that exists, whether `~/.zshrc` loads the script — but never edits
+`~/.zshrc`, which is a personal file whose ordering is yours.
+
+**Executed, not sourced.** It needs nothing from the interactive shell but the
+environment cmux exports, and sourcing would drag `config.sh`'s whole namespace,
+and its bash 3.2 idioms, into every zsh prompt.
+
+**Empty `CREX_LAYOUT` is off, and that is the right default.** crex ships a
+`demo` layout (`🏠 home`, `📁 files`), so a nameless `crex restore` on a machine
+that has saved nothing resurrects an example grid of Documents and Downloads
+panes at every launch.
+
+**`--mode` is always passed.** crex's own default restore mode is `ask`, which
+opens an interactive picker — and a detached job cannot answer one. An invalid
+value falls back to `add` rather than `replace`, because `replace` *closes* live
+workspaces, agent worktrees included; it is not a safe guess.
+
+**Exactly one workspace, not "one or fewer".** The first-pane test is
+`cmux workspace list`, and an unreachable cmux prints nothing at all. Treating
+that zero as "first pane" restores the layout into every shell that ever opens.
+It also uses `workspace list`, not `list-workspaces`: the old form still works,
+but now prints a deprecation notice on stderr, which would land on the terminal
+of every new pane.
+
+**One restore per launch, enforced with `mkdir`.** The restore creates
+workspaces whose shells run this script again, and two panes opening together
+would both see a single workspace. `mkdir` is the atomic test-and-set; the lock
+is keyed on the socket's birth time, so the next launch takes a fresh lock and a
+stale one is never mistaken for this launch's.
+
+**Output goes to the log, never `/dev/null`.** The first version of this ran
+`crex restore --force`, and crex has no `--force` flag: it exited 1 on every
+single launch, in silence, and the layout never came back once. Anything worth
+running in the background is worth logging.
 
 ## cmux's own GUI settings
 
@@ -377,7 +449,9 @@ until that is answered.
 | Pill never appears | `gh auth status`. An unauthenticated `gh pr view` returns nothing and the worker correctly does nothing. |
 | Pill shows `PR #123` with no ticket | `TICKET_RE` does not match your branch prefix. |
 | Pill links to GitHub, not Linear | `PR_LINK_TARGET=github`, or the repo is not in a Linear workspace with the GitHub integration. |
-| Workspace not renamed | It already has a `<TICKET> <text>` title (deliberate), or the dedupe marker is set for that prompt, or `cwd` is outside `MANAGED_REPOS`. |
+| Workspace not renamed | It already has a `<TICKET> <text>` title (deliberate), or the dedupe marker is set for that prompt, or `cwd` is outside `MANAGED_REPOS`. Before 2026-09-18, also: the `UserPromptSubmit` hook was never registered at all — `install.sh` fixes that. |
+| Layout never restored | `install.sh --doctor`. Usually `CREX_LAYOUT` is empty or names a layout `crex list` does not have, or `~/.zshrc` does not load `crex-autorestore.sh`. The log carries crex's own error now; a `--force` flag it never had is what made the original version fail in silence. |
+| Layout restored twice, or over a live session | Only possible with a stale lock in `/tmp/claude/cmux-integration` or `CREX_RESTORE_MODE=replace`. `add` never closes a workspace. |
 | cmux settings did not import | cmux was running. Quit it and re-run `cmux-settings.sh import`. Until 2026-09-12 the guard that detects this was broken (see below) and the import reported success while landing nothing. |
 | `cmux-agent` workspace appears then vanishes | The launch failed and the old unconditional `; exit` closed the pane over the error. Fixed: failures keep the workspace. The usual underlying cause is an untrusted directory — `install.sh --doctor` names it. |
 | Statusline shows `Usage: ~` | Nothing is writing `.statusline-usage-cache`, or the script's swift fallback is gone or has no `fetch-claude-usage.swift` to call. All of it belongs to **Claude Usage.app**. See below. |

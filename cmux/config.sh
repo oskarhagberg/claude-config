@@ -61,6 +61,21 @@ AGENT_OPEN_ISSUE=1      # open the ticket in a browser split when launching
 # refuses rather than guessing.
 AUTOPILOT_SKILL=""
 
+# ── crex layout auto-restore ────────────────────────────────────────────────
+# Saved crex layout restored on the first pane of a cmux launch, by
+# crex-autorestore.sh. Empty = off, which is right on a machine that has saved
+# no layout: crex ships a `demo` layout and restoring that is never what you
+# meant. `crex save <name>` first, then name it here.
+CREX_LAYOUT=""
+
+# 'add' leaves every live workspace alone; 'replace' closes them, agent
+# worktrees included. Never left to crex's own default, 'ask', which opens an
+# interactive picker no detached job can answer.
+CREX_RESTORE_MODE="add"
+
+# The crex binary. Unlike cmux's, it is a normal PATH install (homebrew).
+CREX_BIN="crex"
+
 # The cmux CLI. cmux puts its bundled binary on PATH only for terminals it
 # spawns itself — a plain login shell has no `cmux`, and there is no symlink in
 # /usr/local/bin — so resolve the bundle directly rather than requiring PATH.

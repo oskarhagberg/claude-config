@@ -68,6 +68,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/cmux/hook-name-workspace.sh",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
